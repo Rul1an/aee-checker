@@ -1,0 +1,15 @@
+[package]
+name = "aee-checker"
+version = "0.1.0"
+edition = "2021"
+description = "Independent validity-gate checker for the Adversarial Execution Evidence (AEE) in-toto predicate v0.6, implemented from specification text alone"
+license = "Apache-2.0"
+
+[dependencies]
+sha2 = "0.10"
+ed25519-dalek = "2"
+hex = "0.4"
+base64 = "0.22"
+
+[profile.release]
+debug = false
