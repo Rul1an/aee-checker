@@ -28,7 +28,7 @@ branch head.
   the `accept/` and `reject/` directories contain exactly those 125 JSON
   files (plus generator scripts and INDEX files, which were not read).
 - `vectors/CHANGES.md` declares suiteRevision 1, tracking PR #570 at commit
-  `4a36b19` — consistent with the byte-identical spec diff above.
+  `4a36b19`, consistent with the byte-identical spec diff above.
 - Only `ok-024-mixed-basis-rows` carries explicit per-row tier expectations
   in the manifest (`tierWithPinnedKey` / `tierWithoutKey`); the other
   tier-relevant accepts (`ok-019`, `ok-020`, `ok-023`) pin tier behavior

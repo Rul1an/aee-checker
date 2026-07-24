@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Independent validity-gate checker for the Adversarial Execution Evidence (AEE) in-toto predicate v0.6, implemented from specification text alone"
 license = "Apache-2.0"
+repository = "https://github.com/Rul1an/aee-checker"
 
 [dependencies]
 sha2 = "0.10"

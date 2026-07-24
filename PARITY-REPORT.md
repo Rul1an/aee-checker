@@ -4,7 +4,8 @@ Second independent implementation of the stage-one validity gate, `result`
 recompute, and evidence-tier derivation for the **Adversarial Execution
 Evidence** in-toto predicate v0.6 (in-toto/attestation PR #570, commit
 `4a36b197`), built in Rust from the specification text alone and run against
-the `astrogilda/aee-conformance` vector corpus (suiteRevision 1, 125 vectors).
+the `astrogilda/aee-conformance` vector corpus (suiteRevision 1, git commit
+`1bc6a5a2362260514d35fe3757f35dcc8723f6b6`, 125 vectors).
 
 ## Parity score
 
@@ -126,8 +127,9 @@ The from-spec claim covers stages one through four plus the tier; the
 implementation was written against the specification text and the public
 standards it pins, then run against the vector corpus. Files read, in full:
 
-- The spec: `/tmp/aee-spec.md`, verified byte-identical to
-  `https://raw.githubusercontent.com/astrogilda/attestation/4a36b197/spec/predicates/adversarial-execution-evidence.md`.
+- The spec:
+  `https://raw.githubusercontent.com/astrogilda/attestation/4a36b197/spec/predicates/adversarial-execution-evidence.md`
+  (worked from a local copy verified byte-identical to that URL).
 - From `astrogilda/aee-conformance`: `vectors/MANIFEST.json` (viewed only
   through a filter selecting id/kind/file/expected verdict/result/tier
   fields; no `codes` value was ever displayed, before or after the run),
