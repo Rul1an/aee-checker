@@ -38,8 +38,22 @@
       "vectors": 138,
       "acceptParity": "35/35",
       "rejectParity": "103/103",
+      "continuouslyVerified": false,
+      "note": "The revision-2 corpus under the merged checker. Superseded as the continuously verified record by suite-revision-3.json; kept because the 132 to 138 boundary is only readable against it.",
+      "checkerCommit": "47dbaf17a405b3949e5cad20321b9b70ae38071c"
+    },
+    {
+      "file": "suite-revision-3.json",
+      "reportSha256": "sha256:034422e451f4a3a73e4ae3120b78ab2acc0402e3d8ecc6db5d56b06d2a6f814d",
+      "checkerSourceDigest": "sha256:2bea134530e951c132dedc56ea3e2d10bd3f36bf5f984483214401cbd022d3d0",
+      "suiteRevision": 3,
+      "suiteCommit": "cf0d5402327ae5a451efebc914852d1c687753ca",
+      "specDigest": "sha256:d3872a02875b2da8de0263e93fb92ca6f5ab0fd75f07ed3762a1b18b0c1712a3",
+      "vectors": 140,
+      "acceptParity": "35/35",
+      "rejectParity": "105/105",
       "continuouslyVerified": true,
-      "note": "Regenerated and compared against a fresh run by CI on every push. Its checkerSourceDigest is recomputed from the working tree and must match."
+      "note": "First run against revision 3, by the unchanged revision-2 checker. Its reason-map membership rule was derived from the spec text and predates bad-731 and bad-732 by about an hour and three quarters, so the two new vectors met a rule that was already there rather than driving it."
     }
   ]
 }

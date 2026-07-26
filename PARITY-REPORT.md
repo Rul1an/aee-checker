@@ -54,7 +54,8 @@ fails instead of passing quietly.
 |---|---|---|---|
 | [`reports/suite-revision-1.json`](reports/suite-revision-1.json) | `a7d891b` | revision 1, `1bc6a5a2` | 125 vectors, 34/34 and 91/91 |
 | [`reports/suite-revision-2-baseline.json`](reports/suite-revision-2-baseline.json) | `a7d891b`, unchanged | revision 2, `55ee7332` | 138 vectors, 34/35 and 98/103 |
-| [`reports/suite-revision-2.json`](reports/suite-revision-2.json) | this commit | revision 2, `55ee7332` | 138 vectors, 35/35 and 103/103 |
+| [`reports/suite-revision-2.json`](reports/suite-revision-2.json) | `47dbaf17` | revision 2, `55ee7332` | 138 vectors, 35/35 and 103/103 |
+| [`reports/suite-revision-3.json`](reports/suite-revision-3.json) | `47dbaf17`, unchanged | revision 3, `cf0d5402` | 140 vectors, 35/35 and 105/105 |
 
 The middle row is the one worth keeping. It is the revision boundary itself: the
 same build that scored 125/125 on revision 1, run unchanged against revision 2,
@@ -165,6 +166,29 @@ were seen; no file in them was opened.
 
 The honest description of this revision is therefore **independent checker,
 spec-diff-led update, conformance verified** — not a second blind run.
+
+## suiteRevision 3
+
+The corpus moved to suiteRevision 3 (git commit
+`cf0d5402327ae5a451efebc914852d1c687753ca`, 140 vectors: 35 accept, 105 reject).
+No normative spec change and the spec digest is unchanged; the revision adds two
+forcing vectors, `bad-731-outofscope-unknown-class` and
+`bad-732-routedelsewhere-unknown-class`.
+
+**140/140 on the first run, with the checker unchanged.**
+
+The claim worth making here is narrow and worth stating precisely, because a
+looser one is available and would be wrong. This was not a second blind
+from-scratch run: the checker is the same build that had already read revision 2's
+changelog. What it was is this: the unchanged revision-2 checker, whose reason-map
+membership rule was derived from the partition sentence in the spec and predates
+both new vectors by about an hour and three quarters, passed revision 3 at 140/140
+on its first run, refusing each new vector with the map-specific reason.
+
+That is the useful shape of the evidence. The rule came out of the specification
+text on one side and out of independently written vectors on the other, and the
+two met. It says nothing about the rest of the corpus that a prior run had not
+already said.
 
 ## Mismatches
 
