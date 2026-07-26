@@ -380,12 +380,52 @@ fn check_arming(payload: &Value, ctx: &Ctx) -> R<()> {
             if n < 1 {
                 return Err(Fail("arming record aeeRunSeq is not positive".into()));
             }
-            match scope.and_then(|v| v.as_str()) {
-                Some(_) => {}
+            // Spec: aeeChainScope is "a duplicate-free array of dimension tokens drawn
+            // from the closed vocabulary registered below, sorted in the same canonical
+            // order as observationVocabulary.labels (UTF-16 code-unit order, RFC 8785
+            // section 3.2.3); REQUIRED whenever aeeRunSeq is present". Each token pins a
+            // projection to a value already on the wire: subject, corpus, networkPosture.
+            // A non-array, an unregistered token, or a non-canonical array is a
+            // reserved-member violation, so the record covers nothing. The revision-1
+            // free-form string has no alias and fails closed.
+            //
+            // This previously read the member through `as_str()`, which is the whole of
+            // the old contract: an array yielded None and a plain string passed.
+            match scope {
                 None => {
                     return Err(Fail(
-                        "arming record aeeRunSeq is present without an aeeChainScope string".into(),
+                        "arming record aeeRunSeq is present without an aeeChainScope".into(),
                     ))
+                }
+                Some(v) => {
+                    let arr = v.as_array().ok_or_else(|| {
+                        Fail("arming record aeeChainScope is not a JSON array".into())
+                    })?;
+                    // The empty array is legal: the spec calls it the single global
+                    // per-key counter and warns that it makes the chain rules vacuous,
+                    // rather than forbidding it.
+                    // Named apart from the outer `prev` (`aeePrevRunBinding`), which is
+                    // still live at the `match (n, prev)` below.
+                    let mut prev_token: Option<Vec<u16>> = None;
+                    for (i, t) in arr.iter().enumerate() {
+                        let tok = t.as_str().ok_or_else(|| {
+                            Fail(format!("arming record aeeChainScope[{i}] is not a JSON string"))
+                        })?;
+                        if !matches!(tok, "subject" | "corpus" | "networkPosture") {
+                            return Err(Fail(format!(
+                                "arming record aeeChainScope[{i}] {tok:?} is outside the closed dimension vocabulary"
+                            )));
+                        }
+                        let units = json::utf16_units(tok);
+                        if let Some(p) = &prev_token {
+                            if *p >= units {
+                                return Err(Fail(format!(
+                                    "arming record aeeChainScope is not strictly ascending by UTF-16 code unit at index {i}"
+                                )));
+                            }
+                        }
+                        prev_token = Some(units);
+                    }
                 }
             }
             match (n, prev) {
@@ -736,17 +776,43 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
         let n = assessed.iter().filter(|c| c == class).count()
             + out_of_scope.iter().filter(|c| c == class).count()
             + routed_elsewhere.iter().filter(|c| c == class).count();
+        // Spec: "The three sets are a disjoint partition of the manifest's classes:
+        // a class appears in exactly one of assessedClasses, outOfScope,
+        // routedElsewhere (a move, not a copy). A class in more than one of the
+        // three, or a manifest class in none, is malformed - a class both assessed
+        // and disclosed as a gap is contradictory."
+        //
+        // This read `n == 0` while its own comment said "exactly one", so an
+        // overlapping class passed. Disclosing a gap is a move out of the assessed
+        // set, and a class in two sets asserts two statuses at once rather than
+        // partial assessment.
         if n == 0 {
             return Err(Fail(format!(
                 "manifest class {class:?} appears in none of assessedClasses, outOfScope, or routedElsewhere"
             )));
         }
-    }
-    for class in &assessed {
-        if !manifest_classes.contains(&class) {
+        if n > 1 {
             return Err(Fail(format!(
-                "assessed class {class:?} does not exist in the corpus manifest"
+                "manifest class {class:?} appears in more than one of assessedClasses, outOfScope, or routedElsewhere; the three are a disjoint partition"
             )));
+        }
+    }
+    // A partition is made of subsets of the thing it partitions, so a key in any of
+    // the three that is not a manifest class breaks it. Only `assessedClasses` was
+    // checked, and the result recompute does not cover the gap: it ignores
+    // non-manifest classes entirely, so an unknown key in either reason map was
+    // accepted in silence rather than caught downstream.
+    for (label, classes) in [
+        ("assessed", &assessed),
+        ("outOfScope", &out_of_scope),
+        ("routedElsewhere", &routed_elsewhere),
+    ] {
+        for class in classes.iter() {
+            if !manifest_classes.contains(&class) {
+                return Err(Fail(format!(
+                    "{label} class {class:?} does not exist in the corpus manifest"
+                )));
+            }
         }
     }
 
@@ -756,6 +822,23 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
     for (i, r) in rows_arr.iter().enumerate() {
         rows.push(parse_row(r, i)?);
     }
+    // Spec: "No two `attackResults` rows may carry the same `attackId`: one row per
+    // executed attack is a well-formedness invariant [...] Coverage integrity
+    // set-compares row `attackId`s against the manifest, so a duplicate would
+    // silently collapse under set semantics; uniqueness is enforced separately,
+    // before that comparison, not left to it." Hence this runs ahead of the
+    // coverage comparison rather than inside it.
+    let mut first_seen: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for (i, row) in rows.iter().enumerate() {
+        if let Some(&j) = first_seen.get(row.attack_id) {
+            return Err(Fail(format!(
+                "attackResults rows {j} and {i} carry the same attackId {:?}; one row per executed attack",
+                row.attack_id
+            )));
+        }
+        first_seen.insert(row.attack_id, i);
+    }
+
     for (i, row) in rows.iter().enumerate() {
         if !manifest_attacks.iter().any(|(_, a)| a == row.attack_id) {
             return Err(Fail(format!(
@@ -804,6 +887,17 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
         }
     }
 
+    // Spec: "For this predicate `subject` MUST contain exactly one entry on a
+    // statement of any basis; a statement carrying zero or more than one subject is
+    // malformed, regardless of whether any row is `basis: substrate`." Only the six
+    // binding-digest inputs stay substrate-scoped.
+    if subjects.len() != 1 {
+        return Err(Fail(format!(
+            "statement carries {} subjects; exactly one is required on a statement of any basis",
+            subjects.len()
+        )));
+    }
+
     let substrate_carrying = rows.iter().any(|r| r.basis == Some("substrate"));
 
     // ---- observation records and batch root ---------------------------------
@@ -817,6 +911,23 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
             records.push(eval_record(rec, i)?);
         }
     }
+    // Spec: "Wherever `observationRefs` is present - on any row, regardless of
+    // `basis`, and including rows on which nothing normative reads it - every index
+    // MUST be in range for `observationRecords`; an out-of-range index is a
+    // structural integrity fault that makes the statement malformed, fail-closed and
+    // independent of any gate." It was previously checked only while walking
+    // substrate rows, so an artifact row's dangling index was never resolved and
+    // never refused.
+    for (i, row) in rows.iter().enumerate() {
+        for &r in &row.refs {
+            if r < 0 || r as usize >= records.len() {
+                return Err(Fail(format!(
+                    "attackResults[{i}].observationRefs index {r} is out of range for observationRecords"
+                )));
+            }
+        }
+    }
+
     // Duplicate detection: a record's canonical identity is its leaf hash.
     for i in 0..records.len() {
         for j in (i + 1)..records.len() {
@@ -850,12 +961,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
 
     // ---- run binding (substrate-carrying statements only) --------------------
     let run_binding: Option<String> = if substrate_carrying {
-        if subjects.len() != 1 {
-            return Err(Fail(format!(
-                "substrate-row-carrying statement has {} subjects; exactly one is required",
-                subjects.len()
-            )));
-        }
+        // Cardinality is already enforced unconditionally above.
         let subject_digest = {
             let s = &subjects[0];
             if s.as_object().is_none() {

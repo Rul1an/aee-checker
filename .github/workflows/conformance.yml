@@ -1,0 +1,77 @@
+name: conformance
+
+# The parity number in the README is only worth what a third party can re-run.
+# This pins the suite commit and the spec digest, demands the full 138/138, and
+# compares a fresh run against the checked-in evidence, so the repository cannot
+# drift away from its own claim.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SUITE_COMMIT: 55ee73321cd40edd2b4a814948506a60074543a2
+  SPEC_DIGEST: d3872a02875b2da8de0263e93fb92ca6f5ab0fd75f07ed3762a1b18b0c1712a3
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          # Full history: the index validator recomputes each historical record's
+          # source digest from the commit it names, which needs those commits present.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out the conformance suite at the pinned commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          repository: astrogilda/aee-conformance
+          ref: ${{ env.SUITE_COMMIT }}
+          path: aee-conformance
+          persist-credentials: false
+
+      - name: Verify the spec digest the parity claim was made against
+        run: |
+          set -euo pipefail
+          actual="$(sha256sum aee-conformance/spec/predicates/adversarial-execution-evidence.md | cut -d' ' -f1)"
+          echo "expected ${SPEC_DIGEST}"
+          echo "actual   ${actual}"
+          test "${actual}" = "${SPEC_DIGEST}"
+
+      - name: Unit tests
+        run: cargo test --locked
+
+      - name: Index binds the records
+        # Provenance in a sidecar only helps if it is bound to what it describes.
+        run: python3 scripts/validate-index.py
+
+      - name: Coverage-partition test
+        # Uses the checked-out suite; skips silently without it.
+        env:
+          AEE_CONFORMANCE_DIR: aee-conformance
+        run: python3 tests/test_coverage_partition.py
+
+      - name: Index-validator tests
+        # The validator's own failure paths, including the two that once passed:
+        # forged suite provenance and a duplicated entry.
+        run: python3 tests/test_validate_index.py
+
+      - name: Comparator tests
+        # The equal path runs every build; the mismatch path only runs when
+        # something is already wrong, so it gets held shut here.
+        run: python3 tests/test_compare_report.py
+
+      - name: Full corpus, 138/138 required
+        run: |
+          set -euo pipefail
+          cargo run --locked --release -- aee-conformance/vectors --json fresh.json | tee run.txt
+          grep -q 'parity: accepts 35/35, rejects 103/103' run.txt
+
+      - name: Fresh run must match the checked-in evidence
+        run: python3 scripts/compare-report.py fresh.json reports/suite-revision-2.json

@@ -1,0 +1,45 @@
+{
+  "$comment": "Provenance for the run records in this directory, and the binding that makes it checkable. A conformance result is a statement about an implementation under test, so it has to name which implementation produced it; the record files carry only the outcome, and the two revision-2 records are otherwise indistinguishable. checkerSourceDigest is a deterministic hash of Cargo.toml, Cargo.lock and src/**, computed by scripts/checker_digest.py, rather than a commit SHA, which cannot name the commit that carries it. reportSha256 binds this file to the records, and scripts/validate-index.py checks the whole thing in CI so a swapped report or drifted metadata fails rather than passing quietly. Reading this file is required to learn which checker produced a record: the records do not carry it themselves.",
+  "records": [
+    {
+      "file": "suite-revision-1.json",
+      "reportSha256": "sha256:62842417eb9c9c21463ca1c4a947704f11e93b668b8a5f3e69e5f70e06535dc2",
+      "checkerSourceDigest": "sha256:f39a69323d337ce690ad820ee1ebf86a87409baef243da4f2d1a94ec4a06274e",
+      "checkerCommit": "a7d891b19d510d84d43354294146d4ab8dfb9e97",
+      "suiteRevision": 1,
+      "suiteCommit": "1bc6a5a2362260514d35fe3757f35dcc8723f6b6",
+      "vectors": 125,
+      "acceptParity": "34/34",
+      "rejectParity": "91/91",
+      "continuouslyVerified": false,
+      "note": "Blind first run: no vector-driven fixes."
+    },
+    {
+      "file": "suite-revision-2-baseline.json",
+      "reportSha256": "sha256:10520f5ddb41a39a8681f6d1848dcf6d65996a23c029e6a4f20571a67e0da3de",
+      "checkerSourceDigest": "sha256:f39a69323d337ce690ad820ee1ebf86a87409baef243da4f2d1a94ec4a06274e",
+      "checkerCommit": "a7d891b19d510d84d43354294146d4ab8dfb9e97",
+      "suiteRevision": 2,
+      "suiteCommit": "55ee73321cd40edd2b4a814948506a60074543a2",
+      "specDigest": "sha256:d3872a02875b2da8de0263e93fb92ca6f5ab0fd75f07ed3762a1b18b0c1712a3",
+      "vectors": 138,
+      "acceptParity": "34/35",
+      "rejectParity": "98/103",
+      "continuouslyVerified": false,
+      "note": "The unchanged revision-1 build against revision 2. This is the revision boundary; the six diverging vectors are named in the record."
+    },
+    {
+      "file": "suite-revision-2.json",
+      "reportSha256": "sha256:0702f8ce3264ebec61705cac5700fbe53a8e109eb25bb9781419860e1956f89f",
+      "checkerSourceDigest": "sha256:2bea134530e951c132dedc56ea3e2d10bd3f36bf5f984483214401cbd022d3d0",
+      "suiteRevision": 2,
+      "suiteCommit": "55ee73321cd40edd2b4a814948506a60074543a2",
+      "specDigest": "sha256:d3872a02875b2da8de0263e93fb92ca6f5ab0fd75f07ed3762a1b18b0c1712a3",
+      "vectors": 138,
+      "acceptParity": "35/35",
+      "rejectParity": "103/103",
+      "continuouslyVerified": true,
+      "note": "Regenerated and compared against a fresh run by CI on every push. Its checkerSourceDigest is recomputed from the working tree and must match."
+    }
+  ]
+}
