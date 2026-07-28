@@ -281,15 +281,15 @@ impl<'a> Parser<'a> {
                                     return Err(ParseError("invalid surrogate pair".into()));
                                 }
                                 let c = 0x10000 + ((cu as u32 - 0xD800) << 10) + (lo as u32 - 0xDC00);
-                                out.push(char::from_u32(c).ok_or_else(|| {
-                                    ParseError("invalid surrogate pair".into())
-                                })?);
+                                let c = char::from_u32(c)
+                                    .ok_or_else(|| ParseError("invalid surrogate pair".into()))?;
+                                Self::push_scalar(&mut out, c)?;
                             } else if (0xDC00..0xE000).contains(&cu) {
                                 return Err(ParseError("lone low surrogate".into()));
                             } else {
-                                out.push(char::from_u32(cu as u32).ok_or_else(|| {
-                                    ParseError("invalid \\u escape".into())
-                                })?);
+                                let c = char::from_u32(cu as u32)
+                                    .ok_or_else(|| ParseError("invalid \\u escape".into()))?;
+                                Self::push_scalar(&mut out, c)?;
                             }
                         }
                         _ => return Err(ParseError("invalid escape".into())),
@@ -301,11 +301,28 @@ impl<'a> Parser<'a> {
                     let s = std::str::from_utf8(&self.bytes[self.pos..])
                         .map_err(|_| ParseError("invalid UTF-8".into()))?;
                     let c = s.chars().next().unwrap();
-                    out.push(c);
+                    Self::push_scalar(&mut out, c)?;
                     self.pos += c.len_utf8();
                 }
             }
         }
+    }
+
+    /// Append one resolved scalar value to a string being parsed, rejecting the
+    /// Unicode noncharacters.
+    ///
+    /// Both routes into a string body pass through here, the escape and the raw
+    /// UTF-8 byte, because the exclusion is over code points and a producer can
+    /// reach any of them either way.
+    fn push_scalar(out: &mut String, c: char) -> Result<(), ParseError> {
+        if is_noncharacter(c) {
+            return Err(ParseError(format!(
+                "Unicode noncharacter U+{:04X} in string",
+                c as u32
+            )));
+        }
+        out.push(c);
+        Ok(())
     }
 
     fn parse_hex4(&mut self) -> Result<u16, ParseError> {
@@ -374,6 +391,21 @@ impl<'a> Parser<'a> {
 /// vocabulary sort checks.
 pub fn utf16_units(s: &str) -> Vec<u16> {
     s.encode_utf16().collect()
+}
+
+/// True for the sixty-six Unicode noncharacters: U+FDD0 through U+FDEF, and
+/// U+nFFFE and U+nFFFF in each of the seventeen planes.
+///
+/// These are valid Unicode scalar values, so unlike an ill-formed sequence
+/// nothing substitutes for them and no decoder splits on them. RFC 7493
+/// section 2.1 forbids them in the same sentence as surrogates, and the
+/// predicate excludes them wherever a string literal appears so that a verifier
+/// implementing the I-JSON label does not reject a record another verifier
+/// accepts. The plane-end pairs differ only in their lowest bit, so one mask
+/// covers all thirty-four of them.
+pub fn is_noncharacter(c: char) -> bool {
+    let u = c as u32;
+    (0xFDD0..=0xFDEF).contains(&u) || (u & 0xFFFE) == 0xFFFE
 }
 
 /// True when every code point of `s` is in the Basic Multilingual Plane.
@@ -577,6 +609,41 @@ mod tests {
         assert!(parse(deep_array.as_bytes()).is_ok());
         let too_deep_array = format!("{}1{}", "[".repeat(129), "]".repeat(129));
         assert!(parse(too_deep_array.as_bytes()).is_err());
+    }
+
+    #[test]
+    fn noncharacter_set_is_exactly_sixty_six() {
+        let n = (0..=0x10FFFFu32)
+            .filter_map(char::from_u32)
+            .filter(|c| is_noncharacter(*c))
+            .count();
+        assert_eq!(n, 66);
+        // The two shapes, and the code points on either side of each boundary.
+        assert!(is_noncharacter('\u{FDD0}') && is_noncharacter('\u{FDEF}'));
+        assert!(!is_noncharacter('\u{FDCF}') && !is_noncharacter('\u{FDF0}'));
+        assert!(is_noncharacter('\u{FFFE}') && is_noncharacter('\u{FFFF}'));
+        assert!(is_noncharacter('\u{10FFFE}') && is_noncharacter('\u{10FFFF}'));
+        assert!(!is_noncharacter('\u{FFFD}') && !is_noncharacter('\u{10000}'));
+    }
+
+    #[test]
+    fn noncharacters_rejected_by_either_route() {
+        // Raw UTF-8 in a value, in a member name, and nested.
+        assert!(parse("{\"a\":\"x\u{FFFF}y\"}".as_bytes()).is_err());
+        assert!(parse("{\"a\u{FDD0}b\":1}".as_bytes()).is_err());
+        assert!(parse("{\"a\":[{\"b\":\"\u{1FFFE}\"}]}".as_bytes()).is_err());
+        // The same code points as escapes, including via a surrogate pair,
+        // since the exclusion is over code points and not over spelling.
+        assert!(parse(br#"{"a":"\uFFFF"}"#).is_err());
+        assert!(parse(br#"{"a":"\uFDD0"}"#).is_err());
+        assert!(parse(br#"{"a":"\uD83F\uDFFE"}"#).is_err()); // U+1FFFE via a surrogate pair
+        assert!(parse(br#"{"a":"\uFDEF"}"#).is_err());
+        // Immediate neighbours still parse, so this rejects the noncharacters
+        // rather than the neighbourhood they sit in.
+        assert!(parse(br#"{"a":"\uFFFD"}"#).is_ok());
+        assert!(parse(br#"{"a":"\uFDCF"}"#).is_ok());
+        assert!(parse(br#"{"a":"\uFDF0"}"#).is_ok());
+        assert!(parse(br#"{"a":"\uD83D\uDE00"}"#).is_ok()); // U+1F600
     }
 
     #[test]

@@ -66,8 +66,22 @@
       "vectors": 149,
       "acceptParity": "35/35",
       "rejectParity": "114/114",
+      "continuouslyVerified": false,
+      "note": "Revision 5 pins the two things the v0.6 text left open, encoding and nesting depth. The unchanged revision-3 checker scored 148/149 against it, missing only bad-741: this implementation had picked 256 where the text now says 128, and counted depth per parsed value where the text now says per open container. Both halves are fixed here. The constant alone would also have scored 149/149, which is why the boundary the corpus does not reach is pinned in the parser's own tests instead.",
+      "checkerCommit": "88c37d19c63854341778fd40fb31108d74975ce1"
+    },
+    {
+      "file": "suite-revision-6.json",
+      "reportSha256": "sha256:0362e1768849e56f2e2df3b5ce188ffcead28cebfc41511ec03530ee7552fd87",
+      "checkerSourceDigest": "sha256:1c3e2e7843fc021e20c33d3bdc726fbb704ad0438654a0444fa7a06d6613aaba",
+      "suiteRevision": 6,
+      "suiteCommit": "7098f4e6b7d04c8394969ed81b4025d4d9038324",
+      "specDigest": "sha256:606215de629d5f5eda9e62826cf511733b1ec0b9ca8ed07662a5c8bfe181d0b9",
+      "vectors": 153,
+      "acceptParity": "36/36",
+      "rejectParity": "117/117",
       "continuouslyVerified": true,
-      "note": "Revision 5 pins the two things the v0.6 text left open, encoding and nesting depth. The unchanged revision-3 checker scored 148/149 against it, missing only bad-741: this implementation had picked 256 where the text now says 128, and counted depth per parsed value where the text now says per open container. Both halves are fixed here. The constant alone would also have scored 149/149, which is why the boundary the corpus does not reach is pinned in the parser's own tests instead."
+      "note": "Revision 6 adds the depth boundary pair and the noncharacter pair. The unchanged revision-5 checker scored 151/153 against it: ok-036 and bad-742 passed on the container-branch counter already in place, and bad-743 and bad-744 did not, because this checker did not implement the RFC 7493 section 2.1 noncharacter exclusion the revision makes normative. A directed fix, not a blind run: the rule was stated before this checker was run."
     }
   ]
 }
