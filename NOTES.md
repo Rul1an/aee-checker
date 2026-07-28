@@ -7,6 +7,13 @@
 | 1 | `1bc6a5a2362260514d35fe3757f35dcc8723f6b6` | — (byte-identical to branch head `4a36b197`, see below) | 125 | 125/125 |
 | 2 | `55ee73321cd40edd2b4a814948506a60074543a2` | `d3872a02875b2da8de0263e93fb92ca6f5ab0fd75f07ed3762a1b18b0c1712a3` | 138 | 138/138 |
 | 3 | `cf0d5402327ae5a451efebc914852d1c687753ca` | `d3872a02875b2da8de0263e93fb92ca6f5ab0fd75f07ed3762a1b18b0c1712a3` (unchanged) | 140 | 140/140 |
+| 4 | `b886c0a` | — | — | not run here |
+| 5 | `ea25a1e218e94843e018dffc0eae4f3fcab1749e` | `39233b27b7f27b94ed727a3852030c69c7a64e5706b73519848a2b02f244e661` | 149 | 149/149 (148/149 unchanged) |
+
+Revision 4 vendored the new encoding and nesting rules into the spec and this
+checker was never run against it, so there is no record for it and the table
+says so rather than leaving the gap to be read as a skipped number. Revision 5
+adds the byte-level vector tier that exercises them.
 
 The revision-1 run was blind. The revision-2 run was not, though the order
 matters: the six differing behaviours came out of the baseline run, which named
@@ -19,10 +26,29 @@ Against revision 2, the revision-1 build scored 132/138 unchanged. The before an
 the after of *that* boundary are `reports/suite-revision-2-baseline.json` and
 `reports/suite-revision-2.json`, both against suite `55ee7332`;
 `reports/suite-revision-1.json` is the earlier corpus and is not the before-record
-here. `reports/INDEX.json` names the checker and suite behind each of the four records.
-All four are inspectable and reproducible by hand from those pins; only the
-revision-3 run at 140/140 is re-verified continuously by CI, which follows the
-current suite pin.
+here. `reports/INDEX.json` names the checker and suite behind each of the five records.
+
+The revision-5 run was not blind either, and in the opposite direction from
+revision 2: the maintainer reported the miss before it was run, naming both the
+vector and the constant. What that report did not contain, and what the run and
+the source did, is that the constant was the smaller half. This parser counted
+depth per parsed value where the revision states per open container, so it sat
+one level away from the spec rule on every document in the corpus: measured on
+the raw bytes, which needs no parser and so covers the deliberately ill-formed
+vectors too, the offset is one on all 149 statements and every record payload
+inside them, because every deepest path in the corpus ends in a scalar. Setting
+the constant alone reaches 149/149 and is still wrong at depth 128. What makes
+the corpus unable to separate the two is not its maximum depth — `bad-741`'s
+payload sits at 130 — but that no document in it sits at 128, which is the one
+depth where the two readings disagree. A scalar leaf inside 128 open containers
+reads as 129 to a per-value counter and 128 to a per-container one; at 129 both
+reject, and at 128 with an empty-container leaf both accept. The boundary
+therefore lives in `src/json.rs`'s own tests.
+
+All five are inspectable and reproducible by hand from those pins; the
+revision-5 run at 149/149 is the one re-verified continuously by CI, which
+follows the current suite pin. Revision 3 was continuously verified until
+revision 5 replaced it and remains reproducible from its own pins.
 
 ## Vendored spec vs branch head
 
