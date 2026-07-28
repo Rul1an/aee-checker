@@ -95,7 +95,16 @@ struct Parser<'a> {
     depth: usize,
 }
 
-const MAX_DEPTH: usize = 256;
+/// Maximum JSON nesting depth. A statement, or a record payload, whose depth
+/// exceeds this is malformed.
+///
+/// Depth is the number of arrays and objects open at a given point, with the
+/// outermost `{` at depth 1; scalar values do not increase it. Both halves are
+/// load-bearing. An implementation that increments per parsed value instead of
+/// per open container sits one level away from this one at an identical
+/// constant, and disagrees with it on any document whose deepest path ends in a
+/// scalar -- which, in the conformance corpus, is every document.
+const MAX_DEPTH: usize = 128;
 
 pub fn parse(input: &[u8]) -> Result<Value, ParseError> {
     let text = std::str::from_utf8(input)
@@ -138,9 +147,12 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_value(&mut self) -> Result<Value, ParseError> {
-        self.depth += 1;
-        if self.depth > MAX_DEPTH {
-            return Err(ParseError("nesting too deep".into()));
+        let opens_container = matches!(self.peek(), Some(b'{' | b'['));
+        if opens_container {
+            self.depth += 1;
+            if self.depth > MAX_DEPTH {
+                return Err(ParseError("nesting too deep".into()));
+            }
         }
         let v = match self.peek() {
             Some(b'{') => self.parse_object(),
@@ -152,7 +164,9 @@ impl<'a> Parser<'a> {
             Some(c) if c == b'-' || c.is_ascii_digit() => self.parse_number(),
             _ => Err(ParseError(format!("unexpected byte at {}", self.pos))),
         };
-        self.depth -= 1;
+        if opens_container {
+            self.depth -= 1;
+        }
         v
     }
 
@@ -527,5 +541,50 @@ mod tests {
         assert_eq!(parse_safe_integer("9007199254740992"), None);
         assert_eq!(parse_safe_integer("-9007199254740992"), None);
         assert_eq!(parse_safe_integer("1.5"), None);
+    }
+
+    /// `n` nested objects around `leaf`, so the document's depth is exactly `n`
+    /// under the spec rule: the outermost `{` is depth 1 and the leaf, being a
+    /// scalar, does not add one.
+    fn nest_objects(n: usize, leaf: &str) -> String {
+        let mut s = String::new();
+        for _ in 0..n {
+            s.push_str("{\"a\":");
+        }
+        s.push_str(leaf);
+        for _ in 0..n {
+            s.push('}');
+        }
+        s
+    }
+
+    #[test]
+    fn depth_bound_is_counted_over_open_containers() {
+        // The boundary the corpus does not reach. Depth 128 with a scalar leaf
+        // is valid; an implementation that increments per parsed value rejects
+        // it at the same constant, because the leaf pushes its counter to 129.
+        assert!(parse(nest_objects(128, "1").as_bytes()).is_ok());
+        assert!(parse(nest_objects(129, "1").as_bytes()).is_err());
+
+        // The other side of that offset: a leaf that is itself an empty
+        // container does add a level, so 127 wrappers around `{}` is the same
+        // depth as 128 around a scalar.
+        assert!(parse(nest_objects(127, "{}").as_bytes()).is_ok());
+        assert!(parse(nest_objects(128, "{}").as_bytes()).is_err());
+
+        // Arrays open a container on the same footing as objects.
+        let deep_array = format!("{}1{}", "[".repeat(128), "]".repeat(128));
+        assert!(parse(deep_array.as_bytes()).is_ok());
+        let too_deep_array = format!("{}1{}", "[".repeat(129), "]".repeat(129));
+        assert!(parse(too_deep_array.as_bytes()).is_err());
+    }
+
+    #[test]
+    fn scalars_do_not_consume_depth() {
+        // Breadth is not depth: a shallow object with many scalar members must
+        // parse regardless of how many there are.
+        let members: Vec<String> = (0..2000).map(|i| format!("\"k{i}\":{i}")).collect();
+        let wide = format!("{{{}}}", members.join(","));
+        assert!(parse(wide.as_bytes()).is_ok());
     }
 }

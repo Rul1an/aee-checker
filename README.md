@@ -8,6 +8,8 @@ An independent validity-gate checker for the **Adversarial Execution Evidence (A
 
 **suiteRevision 3: 140/140** (35/35, 105/105) on the first run with the checker unchanged. The revision adds two forcing vectors for the reason-map side of the coverage-partition rule; this checker's rule for it came from the spec text and predates them, so the two met rather than one driving the other.
 
+**suiteRevision 5: 149/149** (35/35, 114/114) after a parser fix. The unchanged revision-3 build scored **148/149** against it, and the single miss is worth stating plainly because the causation runs the other way this time: the revision pins a nesting bound the earlier text did not state, this checker had picked 256, and the new `bad-741` vector found it. Not blind, and not a case of the two meeting. The bound was only the visible half. The revision also states the counting rule, and this parser had been incrementing per parsed value rather than per open container, which read exactly one level deeper than the spec rule on **every document in the corpus** — all 149 statements and every record payload inside them, measured on the raw bytes so the deliberately ill-formed vectors are covered too — because every deepest path in the corpus ends in a scalar. Changing only the constant scores 149/149 as well, and still rejects a statement at depth 128 that the spec calls valid. What keeps the corpus from telling the two fixes apart is not its maximum depth, since `bad-741`'s payload sits at 130, but that nothing in it sits at 128, the one depth where the two readings disagree: a scalar leaf inside 128 open containers reads as 129 to a per-value counter and 128 to a per-container one, and at 129 both reject. That boundary is pinned in this parser's own tests instead. The revision's other half, the encoding rules, needed no change here: this checker rejected ill-formed UTF-8, CESU-8, overlong forms and unpaired surrogate escapes from the first build.
+
 [PARITY-REPORT.md](PARITY-REPORT.md) carries the scores, the interpretation decisions the spec text forced, the four formerly-open corners and how each was closed, and the from-spec discipline attestation listing exactly what was and was not read for each revision. [NOTES.md](NOTES.md) compares the vendored spec against the branch-head spec.
 
 No dependency on the reference implementation: this crate carries its own strict I-JSON parser, RFC 8785 canonicalization with ECMAScript number formatting, RFC 6962 domain-separated Merkle root over DSSE PAE bytes, run-binding derivation, and Ed25519 tier verification against the suite's seed-derived test key.
@@ -16,13 +18,13 @@ No dependency on the reference implementation: this crate carries its own strict
 
 ```
 git clone https://github.com/astrogilda/aee-conformance
-git -C aee-conformance checkout cf0d5402327ae5a451efebc914852d1c687753ca
+git -C aee-conformance checkout ea25a1e218e94843e018dffc0eae4f3fcab1749e
 cargo run --locked --release -- aee-conformance/vectors --json fresh.json
-python3 scripts/compare-report.py fresh.json reports/suite-revision-3.json
+python3 scripts/compare-report.py fresh.json reports/suite-revision-5.json
 ```
 
 The checkout is pinned deliberately. `main` moves, and a later revision would run
-a different corpus against the 140/140 claim on this page, which is the one thing
+a different corpus against the 149/149 claim on this page, which is the one thing
 a reproduction recipe must not do quietly. Earlier revisions are reproducible the
 same way by taking their suite pin and checker commit from
 [`reports/INDEX.json`](reports/INDEX.json).
