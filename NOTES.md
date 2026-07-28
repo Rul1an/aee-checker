@@ -9,6 +9,7 @@
 | 3 | `cf0d5402327ae5a451efebc914852d1c687753ca` | `d3872a02875b2da8de0263e93fb92ca6f5ab0fd75f07ed3762a1b18b0c1712a3` (unchanged) | 140 | 140/140 |
 | 4 | `b886c0a` | — | — | not run here |
 | 5 | `ea25a1e218e94843e018dffc0eae4f3fcab1749e` | `39233b27b7f27b94ed727a3852030c69c7a64e5706b73519848a2b02f244e661` | 149 | 149/149 (148/149 unchanged) |
+| 6 | `7098f4e6b7d04c8394969ed81b4025d4d9038324` | `606215de629d5f5eda9e62826cf511733b1ec0b9ca8ed07662a5c8bfe181d0b9` | 153 | 153/153 (151/153 unchanged) |
 
 Revision 4 vendored the new encoding and nesting rules into the spec and this
 checker was never run against it, so there is no record for it and the table
@@ -45,10 +46,11 @@ reads as 129 to a per-value counter and 128 to a per-container one; at 129 both
 reject, and at 128 with an empty-container leaf both accept. The boundary
 therefore lives in `src/json.rs`'s own tests.
 
-All five are inspectable and reproducible by hand from those pins; the
-revision-5 run at 149/149 is the one re-verified continuously by CI, which
-follows the current suite pin. Revision 3 was continuously verified until
-revision 5 replaced it and remains reproducible from its own pins.
+All six are inspectable and reproducible by hand from those pins; the
+revision-6 run at 153/153 is the one re-verified continuously by CI, which
+follows the current suite pin. Each earlier record was continuously verified
+until the next replaced it, and each remains reproducible from its own pins:
+the fixed build still reproduces the revision-5 record exactly.
 
 ## Vendored spec vs branch head
 
