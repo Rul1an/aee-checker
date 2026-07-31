@@ -20,7 +20,7 @@ No dependency on the reference implementation: this crate carries its own strict
 
 ```
 git clone https://github.com/astrogilda/aee-conformance
-git -C aee-conformance checkout 7098f4e6b7d04c8394969ed81b4025d4d9038324
+git -C aee-conformance checkout 8959bd3293600c10516894e731ed1ef280a21b5c
 cargo run --locked --release -- aee-conformance/vectors --json fresh.json
 python3 scripts/compare-report.py fresh.json reports/suite-revision-6.json
 ```
