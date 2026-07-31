@@ -75,13 +75,13 @@
       "reportSha256": "sha256:0362e1768849e56f2e2df3b5ce188ffcead28cebfc41511ec03530ee7552fd87",
       "checkerSourceDigest": "sha256:1c3e2e7843fc021e20c33d3bdc726fbb704ad0438654a0444fa7a06d6613aaba",
       "suiteRevision": 6,
-      "suiteCommit": "7098f4e6b7d04c8394969ed81b4025d4d9038324",
+      "suiteCommit": "8959bd3293600c10516894e731ed1ef280a21b5c",
       "specDigest": "sha256:606215de629d5f5eda9e62826cf511733b1ec0b9ca8ed07662a5c8bfe181d0b9",
       "vectors": 153,
       "acceptParity": "36/36",
       "rejectParity": "117/117",
       "continuouslyVerified": true,
-      "note": "Revision 6 adds the depth boundary pair and the noncharacter pair. The unchanged revision-5 checker scored 151/153 against it: ok-036 and bad-742 passed on the container-branch counter already in place, and bad-743 and bad-744 did not, because this checker did not implement the RFC 7493 section 2.1 noncharacter exclusion the revision makes normative. A directed fix, not a blind run: the rule was stated before this checker was run."
+      "note": "Revision 6 adds the depth boundary pair and the noncharacter pair. The unchanged revision-5 checker scored 151/153 against it: ok-036 and bad-742 passed on the container-branch counter already in place, and bad-743 and bad-744 did not, because this checker did not implement the RFC 7493 section 2.1 noncharacter exclusion the revision makes normative. A directed fix, not a blind run: the rule was stated before this checker was run. Repinned 2026-08-01 from 7098f4e6b7d04c8394969ed81b4025d4d9038324, which the suite's author rewrote out of reachability on 2026-07-29 while stripping unreachable blobs. The replacement carries the identical root tree 71365c5aa24432c3e3c246b80f1e65183527852f, so the corpus this record was made against is unchanged to the byte; only the name that reaches it is. The old commit still answers the API but is absent from a fresh clone, which is the access path a reproduction actually uses."
     }
   ]
 }

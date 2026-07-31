@@ -9,7 +9,7 @@
 | 3 | `cf0d5402327ae5a451efebc914852d1c687753ca` | `d3872a02875b2da8de0263e93fb92ca6f5ab0fd75f07ed3762a1b18b0c1712a3` (unchanged) | 140 | 140/140 |
 | 4 | `b886c0a` | — | — | not run here |
 | 5 | `ea25a1e218e94843e018dffc0eae4f3fcab1749e` | `39233b27b7f27b94ed727a3852030c69c7a64e5706b73519848a2b02f244e661` | 149 | 149/149 (148/149 unchanged) |
-| 6 | `7098f4e6b7d04c8394969ed81b4025d4d9038324` | `606215de629d5f5eda9e62826cf511733b1ec0b9ca8ed07662a5c8bfe181d0b9` | 153 | 153/153 (151/153 unchanged) |
+| 6 | `8959bd3293600c10516894e731ed1ef280a21b5c` | `606215de629d5f5eda9e62826cf511733b1ec0b9ca8ed07662a5c8bfe181d0b9` | 153 | 153/153 (151/153 unchanged) |
 
 Revision 4 vendored the new encoding and nesting rules into the spec and this
 checker was never run against it, so there is no record for it and the table
