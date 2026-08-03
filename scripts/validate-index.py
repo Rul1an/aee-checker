@@ -82,7 +82,24 @@ def main() -> int:
         if not HEX40.match(rec.get("suiteCommit", "")):
             problems.append(f"{rec['file']}: suiteCommit is not a 40-character lowercase hex commit")
         for key in ("reportSha256", "checkerSourceDigest", "specDigest"):
-            if key in rec and not DIGEST.match(rec[key]):
+            if key not in rec:
+                continue
+            # An explicit null is a permitted value for checkerSourceDigest and
+            # for it alone: it records that the build behind a figure is not
+            # recoverable, which is a fact a provenance index must be able to
+            # state. Omitting the key instead would hide the same fact, and
+            # filling it with another build's digest would name the wrong
+            # implementation. A null demands a note saying why.
+            if rec[key] is None:
+                if key != "checkerSourceDigest":
+                    problems.append(f"{rec['file']}: {key} may not be null")
+                elif not rec.get("note"):
+                    problems.append(
+                        f"{rec['file']}: checkerSourceDigest is null without a note "
+                        f"recording why the build is not recoverable"
+                    )
+                continue
+            if not DIGEST.match(rec[key]):
                 problems.append(f"{rec['file']}: {key} is not a sha256:<64 hex> digest")
         prior = by_revision.setdefault(
             rec["suiteRevision"], (rec["file"], rec.get("suiteCommit"), rec.get("specDigest"))

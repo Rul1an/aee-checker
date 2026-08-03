@@ -306,6 +306,11 @@ struct Ctx<'a> {
     /// The value `aeeObservedSet` must equal, recomputed over the carried
     /// interception and examination records.
     observed_set: &'a str,
+    /// Every `aeePostureDigest` carried by an arming record in this statement.
+    /// A sealed record's posture must equal the arming record's as well as the
+    /// pinned one; carrying both conjuncts here is what lets the covering rule
+    /// be read whole rather than in the half a pinned-only comparison sees.
+    arming_postures: &'a [String],
 }
 
 /// The `aeeKind` token of a carried record, read without applying any
@@ -340,26 +345,31 @@ fn referenced_record_validity(rec: &RecordEval, idx: usize, ctx: &Ctx) -> R<Cove
     let binding = req_str(payload, "aeeRunBinding", &format!("{what} payload"))?;
     let kind_tok = req_str(payload, "aeeKind", &format!("{what} payload"))?;
     let method_tok = req_str(payload, "aeeMethod", &format!("{what} payload"))?;
-    if binding != ctx.run_binding {
+    // The spec has the verifier read aeeBindingVersion BEFORE deriving, and
+    // reject an unimplemented version fail-closed as "the arming record covers
+    // nothing", distinguishably from a run-binding digest mismatch. Both halves
+    // matter: read after the comparison and the digest mismatch masks it, and
+    // failed at statement altitude it over-rejects a statement that carries a
+    // second, valid arming record.
+    let unimplemented_binding_version = match payload.get("aeeBindingVersion") {
+        Some(bv) => bv.as_str() != Some("2"),
+        None => false,
+    };
+    if !unimplemented_binding_version && binding != ctx.run_binding {
         return Err(Fail(format!(
             "{what} payload aeeRunBinding does not equal the run binding derived from this statement"
         )));
-    }
-    // A binding version this verifier does not implement is rejected
-    // fail-closed rather than attempting another construction.
-    if let Some(bv) = payload.get("aeeBindingVersion") {
-        if bv.as_str() != Some("2") {
-            return Err(Fail(format!(
-                "{what} payload declares a run-binding version this verifier does not implement"
-            )));
-        }
     }
     let kind = parse_kind(kind_tok);
     let method = parse_method(method_tok);
     let mut non_covering: Option<String> = None;
     let mut sealed_covers_clean = false;
 
-    if kind == RecordKind::CoversNothing {
+    if unimplemented_binding_version {
+        non_covering = Some(format!(
+            "{what} payload declares a run-binding version this verifier does not implement, so the record covers nothing"
+        ));
+    } else if kind == RecordKind::CoversNothing {
         // Registered, verified, included in the batchRoot recompute, and
         // admitted to nothing: not a row's coverage, not the method cap, not
         // the aeeObservedSet recompute.
@@ -615,9 +625,14 @@ fn check_sealed(payload: &Value, ctx: &Ctx) -> R<bool> {
         }
     }
     // Clean-row covering conditions (each a check on signed carried bytes).
+    // The spec: a sealed record covers no clean row unless its aeePostureDigest
+    // "equals both the arming record's and the pinned networkPosture digest".
+    // The pinned conjunct alone leaves an arming/sealed posture disagreement
+    // uncaught on a statement whose pinned comparison passes.
     let covers_clean = still_armed
         && (drop_count == 0 || drop_bound.is_some_and(|b| drop_count <= b))
-        && posture == ctx.posture_digest;
+        && posture == ctx.posture_digest
+        && ctx.arming_postures.iter().all(|a| a == posture);
     Ok(covers_clean)
 }
 
@@ -1254,6 +1269,20 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
     };
     let manifest_attack_ids: Vec<String> =
         manifest_attacks.iter().map(|(_, a)| a.clone()).collect();
+    // Every arming record's declared posture, for the sealed covering rule's
+    // second conjunct. Read from the carried records rather than from the rows,
+    // because the rule ranges over the statement and not over a reference.
+    let arming_postures: Vec<String> = records
+        .iter()
+        .filter(|r| record_kind_of(r) == RecordKind::Arming)
+        .filter_map(|r| {
+            r.payload
+                .as_ref()
+                .and_then(|p| p.get("aeePostureDigest"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        })
+        .collect();
 
     if substrate_carrying {
         let ctx = Ctx {
@@ -1262,6 +1291,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
             issued_at,
             manifest_attacks: &manifest_attack_ids,
             observed_set: &observed_set,
+            arming_postures: &arming_postures,
         };
         for (i, row) in rows.iter().enumerate() {
             if row.basis != Some("substrate") {
@@ -1426,6 +1456,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                 issued_at,
                 manifest_attacks: &manifest_attack_ids,
                 observed_set: &observed_set,
+                arming_postures: &arming_postures,
             };
             let mut valid_sealed = 0usize;
             for (idx, k) in kinds.iter().enumerate() {

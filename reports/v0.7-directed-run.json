@@ -1,4 +1,4 @@
-{"suite":"aee-conformance","acceptParity":"54/54","rejectParity":"177/178","vectors":[
+{"suite":"aee-conformance","acceptParity":"54/54","rejectParity":"176/176","indeterminateParity":"2/2","vectors":[
 {"id":"ok-001-caught-intercepted-fail","verdict":"valid","result":"fail","reason":null,"tiersWithPinnedKey":["attested"],"tiersWithoutKey":["unattested"],"parity":true},
 {"id":"ok-002-clean-pass-armed-sealed","verdict":"valid","result":"pass","reason":null,"tiersWithPinnedKey":["attested"],"tiersWithoutKey":["unattested"],"parity":true},
 {"id":"ok-003-clean-pass-bounded-drops","verdict":"valid","result":"pass","reason":null,"tiersWithPinnedKey":["attested"],"tiersWithoutKey":["unattested"],"parity":true},
@@ -82,7 +82,7 @@
 {"id":"bad-301-run-binding-splice","verdict":"invalid","result":null,"reason":"observationRecords[0] payload aeeRunBinding does not equal the run binding derived from this statement","tiersWithPinnedKey":null,"tiersWithoutKey":null,"parity":true},
 {"id":"bad-302-method-inflation","verdict":"invalid","result":null,"reason":"attackResults[0] claims method intercepted but a covering record is signed aeeMethod reconstructed","tiersWithPinnedKey":null,"tiersWithoutKey":null,"parity":true},
 {"id":"bad-303-binding-version-1","verdict":"invalid","result":null,"reason":"observationRecords[0] payload aeeRunBinding does not equal the run binding derived from this statement","tiersWithPinnedKey":null,"tiersWithoutKey":null,"parity":true},
-{"id":"bad-726-arming-binding-version-carried","verdict":"invalid","result":null,"reason":"observationRecords[0] payload declares a run-binding version this verifier does not implement","tiersWithPinnedKey":null,"tiersWithoutKey":null,"parity":true},
+{"id":"bad-726-arming-binding-version-carried","verdict":"invalid","result":null,"reason":"attackResults[0] is a clean intercepted row with no covering arming record","tiersWithPinnedKey":null,"tiersWithoutKey":null,"parity":true},
 {"id":"bad-304-method-cap-multirecord","verdict":"invalid","result":null,"reason":"attackResults[0] claims method intercepted but a covering record is signed aeeMethod reconstructed","tiersWithPinnedKey":null,"tiersWithoutKey":null,"parity":true},
 {"id":"bad-401-records-no-batchroot","verdict":"invalid","result":null,"reason":"observationRecords is non-empty but batchRoot is missing","tiersWithPinnedKey":null,"tiersWithoutKey":null,"parity":true},
 {"id":"bad-402-root-no-domain-separation","verdict":"invalid","result":null,"reason":"batchRoot does not recompute over the carried observation records","tiersWithPinnedKey":null,"tiersWithoutKey":null,"parity":true},
@@ -226,7 +226,7 @@
 {"id":"bad-985-liveness-middle-channel-probe-uncaught","verdict":"invalid","result":null,"reason":"attackResults[1] is a caught intercepted row with no covering interception record","tiersWithPinnedKey":null,"tiersWithoutKey":null,"parity":true},
 {"id":"bad-900-sealed-method-reconstructed","verdict":"invalid","result":null,"reason":"attackResults[0] is a clean intercepted row with no covering sealed record","tiersWithPinnedKey":null,"tiersWithoutKey":null,"parity":true},
 {"id":"bad-901-sealed-negative-dropcount","verdict":"invalid","result":null,"reason":"attackResults[0] is a clean intercepted row with no covering sealed record","tiersWithPinnedKey":null,"tiersWithoutKey":null,"parity":true},
-{"id":"bad-902-sealed-posture-ne-arming","verdict":"valid","result":"pass","reason":null,"tiersWithPinnedKey":["attested"],"tiersWithoutKey":["unattested"],"parity":false},
+{"id":"bad-902-sealed-posture-ne-arming","verdict":"invalid","result":null,"reason":"attackResults[0] is a clean intercepted row with no covering sealed record","tiersWithPinnedKey":null,"tiersWithoutKey":null,"parity":true},
 {"id":"bad-905-vocabulary-labels-absent","verdict":"invalid","result":null,"reason":"observationVocabulary is missing required member \"labels\"","tiersWithPinnedKey":null,"tiersWithoutKey":null,"parity":true},
 {"id":"bad-906-corpus-manifest-absent","verdict":"invalid","result":null,"reason":"observationEnvironment.corpus is missing required member \"manifest\"","tiersWithPinnedKey":null,"tiersWithoutKey":null,"parity":true},
 {"id":"ind-001-undecodable-then-signatures-empty","verdict":"invalid","result":null,"reason":"observationRecords[0].payload is not valid base64","tiersWithPinnedKey":null,"tiersWithoutKey":null,"parity":true},

@@ -14,8 +14,8 @@ permissions:
   contents: read
 
 env:
-  SUITE_COMMIT: 8959bd3293600c10516894e731ed1ef280a21b5c
-  SPEC_DIGEST: 606215de629d5f5eda9e62826cf511733b1ec0b9ca8ed07662a5c8bfe181d0b9
+  SUITE_COMMIT: 84ba22718e5b2e0e0b04e3a1b8c6dbbe9e3b1f6a
+  SPEC_DIGEST: 94de8da54af6a2fe4c897f606ca22bfd054f4238b3c85db031ddc703516331b5
 
 jobs:
   parity:
@@ -71,7 +71,7 @@ jobs:
         run: |
           set -euo pipefail
           cargo run --locked --release -- aee-conformance/vectors --json fresh.json | tee run.txt
-          grep -q 'parity: accepts 36/36, rejects 117/117' run.txt
+          grep -q 'parity: accepts 54/54, rejects 176/176, indeterminate 2/2' run.txt
 
       - name: Fresh run must match the checked-in evidence
         run: python3 scripts/compare-report.py fresh.json reports/suite-revision-6.json
