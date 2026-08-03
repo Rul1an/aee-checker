@@ -33,11 +33,36 @@ pub enum Verdict {
     },
     Invalid {
         reason: String,
+        /// The condition this refusal forces, from the corpus's vocabulary.
+        code: &'static str,
     },
 }
 
-/// One free-form failure reason; stage one stops at the first violation.
-struct Fail(String);
+/// One failure: the condition it forces, and the human-readable reason.
+///
+/// The code is the load-bearing half. Verdict parity is the weaker measure, since
+/// a reject naming the wrong condition scores as agreement under it, and prose
+/// cannot be compared against a condition vocabulary without inventing a map.
+/// Carrying the code at the site of the refusal makes reason parity a comparison
+/// instead of a construction.
+struct Fail {
+    code: &'static str,
+    msg: String,
+}
+
+impl Fail {
+    fn new(code: &'static str, msg: String) -> Self {
+        Fail { code, msg }
+    }
+}
+
+/// Transitional: a bare `Fail(msg)` still compiles and reports the catch-all
+/// condition, so an uncoded site shows up in the measurement rather than
+/// silently scoring as whatever the corpus expected.
+#[allow(non_snake_case)]
+fn Fail(msg: String) -> Fail {
+    Fail::new("statement-malformed", msg)
+}
 
 type R<T> = Result<T, Fail>;
 
@@ -220,7 +245,7 @@ fn eval_record(rec: &Value, idx: usize) -> R<RecordEval> {
     let payload_type = req_str(rec, "payloadType", &what)?;
     let sigs = req_arr(rec, "signatures", &what)?;
     if sigs.is_empty() {
-        return Err(Fail(format!("{what}.signatures carries no entry")));
+        return Err(Fail::new("record-signatures-empty", format!("{what}.signatures carries no entry")));
     }
     let mut sig_bytes = Vec::new();
     for (i, s) in sigs.iter().enumerate() {
@@ -237,14 +262,14 @@ fn eval_record(rec: &Value, idx: usize) -> R<RecordEval> {
         }
         let bytes = B64
             .decode(sig)
-            .map_err(|_| Fail(format!("{what}.signatures[{i}].sig is not valid base64")))?;
+            .map_err(|_| Fail::new("record-undecodable", format!("{what}.signatures[{i}].sig is not valid base64")))?;
         sig_bytes.push(bytes);
     }
     // Strict, canonical base64: decode with the standard alphabet and
     // require the re-encoding to reproduce the carried text, so a payload
     // smuggled through a lenient decoder is rejected as undecodable.
     let payload_bytes = B64.decode(payload_b64).map_err(|_| {
-        Fail(format!("{what}.payload is not valid base64"))
+        Fail::new("record-undecodable", format!("{what}.payload is not valid base64"))
     })?;
     if B64.encode(&payload_bytes) != payload_b64 {
         return Err(Fail(format!(
@@ -332,12 +357,12 @@ fn record_kind_of(rec: &RecordEval) -> RecordKind {
 fn referenced_record_validity(rec: &RecordEval, idx: usize, ctx: &Ctx) -> R<CoverEval> {
     let what = format!("observationRecords[{idx}]");
     if !rec.json_media_type {
-        return Err(Fail(format!(
+        return Err(Fail::new("payload-media-type", format!(
             "{what} covers a substrate row but its payloadType does not end in +json"
         )));
     }
     let payload = rec.payload.as_ref().ok_or_else(|| {
-        Fail(format!(
+        Fail::new("payload-not-ijson", format!(
             "{what} covers a substrate row but its payload is not a canonical I-JSON object: {}",
             rec.payload_err.as_deref().unwrap_or("unknown")
         ))
@@ -356,7 +381,7 @@ fn referenced_record_validity(rec: &RecordEval, idx: usize, ctx: &Ctx) -> R<Cove
         None => false,
     };
     if !unimplemented_binding_version && binding != ctx.run_binding {
-        return Err(Fail(format!(
+        return Err(Fail::new("run-binding-mismatch", format!(
             "{what} payload aeeRunBinding does not equal the run binding derived from this statement"
         )));
     }
@@ -406,7 +431,7 @@ fn referenced_record_validity(rec: &RecordEval, idx: usize, ctx: &Ctx) -> R<Cove
                     non_covering =
                         Some("arming record is not signed aeeMethod intercepted".into());
                 } else if let Err(e) = check_arming(payload, ctx) {
-                    non_covering = Some(e.0);
+                    non_covering = Some(e.msg);
                 }
             }
             RecordKind::Sealed => {
@@ -416,7 +441,7 @@ fn referenced_record_validity(rec: &RecordEval, idx: usize, ctx: &Ctx) -> R<Cove
                 } else {
                     match check_sealed(payload, ctx) {
                         Ok(covers_clean) => sealed_covers_clean = covers_clean,
-                        Err(e) => non_covering = Some(e.0),
+                        Err(e) => non_covering = Some(e.msg),
                     }
                 }
             }
@@ -461,7 +486,8 @@ fn check_arming(payload: &Value, ctx: &Ctx) -> R<()> {
         .map_err(Fail)?;
     for a in &assessed {
         if !ctx.manifest_attacks.iter().any(|m| m == a) {
-            return Err(Fail(format!(
+            return Err(Fail::new(
+            "arming-covers-nothing", format!(
                 "arming record aeeAssessedAttacks entry {a:?} is not an attackId the carried manifest declares"
             )));
         }
@@ -524,17 +550,18 @@ fn check_arming(payload: &Value, ctx: &Ctx) -> R<()> {
                     let mut prev_token: Option<Vec<u16>> = None;
                     for (i, t) in arr.iter().enumerate() {
                         let tok = t.as_str().ok_or_else(|| {
-                            Fail(format!("arming record aeeChainScope[{i}] is not a JSON string"))
+                            Fail::new("arming-covers-nothing", format!("arming record aeeChainScope[{i}] is not a JSON string"))
                         })?;
                         if !matches!(tok, "subject" | "corpus" | "networkPosture") {
-                            return Err(Fail(format!(
+                            return Err(Fail::new(
+            "vocabulary-not-canonical", format!(
                                 "arming record aeeChainScope[{i}] {tok:?} is outside the closed dimension vocabulary"
                             )));
                         }
                         let units = json::utf16_units(tok);
                         if let Some(p) = &prev_token {
                             if *p >= units {
-                                return Err(Fail(format!(
+                                return Err(Fail::new("arming-covers-nothing", format!(
                                     "arming record aeeChainScope is not strictly ascending by UTF-16 code unit at index {i}"
                                 )));
                             }
@@ -619,7 +646,7 @@ fn check_sealed(payload: &Value, ctx: &Ctx) -> R<bool> {
             .map_err(Fail)?;
     for a in &observed_attacks {
         if !ctx.manifest_attacks.iter().any(|m| m == a) {
-            return Err(Fail(format!(
+            return Err(Fail::new("observed-attack-uncaught", format!(
                 "sealed record aeeObservedAttacks entry {a:?} is not an attackId the carried manifest declares"
             )));
         }
@@ -684,20 +711,20 @@ fn parse_row<'a>(row: &'a Value, idx: usize) -> R<Row<'a>> {
         None => None,
         Some(v) => Some(
             v.as_str()
-                .ok_or_else(|| Fail(format!("{what}.attribution is not a JSON string")))?,
+                .ok_or_else(|| Fail::new("statement-malformed", format!("{what}.attribution is not a JSON string")))?,
         ),
     };
     // actualLayer is required on every row: a missing member is a
     // malformed statement, and so is a wrong-typed one.
     match row.get("actualLayer") {
         None => {
-            return Err(Fail(format!(
+            return Err(Fail::new("malformed-missing-actual-layer", format!(
                 "{what} is missing the required actualLayer member"
             )))
         }
         Some(v) => {
             if v.as_str().is_none() {
-                return Err(Fail(format!("{what}.actualLayer is not a JSON string")));
+                return Err(Fail::new("malformed-missing-actual-layer", format!("{what}.actualLayer is not a JSON string")));
             }
         }
     }
@@ -705,10 +732,10 @@ fn parse_row<'a>(row: &'a Value, idx: usize) -> R<Row<'a>> {
     if let Some(r) = row.get("observationRefs") {
         let arr = r
             .as_array()
-            .ok_or_else(|| Fail(format!("{what}.observationRefs is not a JSON array")))?;
+            .ok_or_else(|| Fail::new("ref-malformed", format!("{what}.observationRefs is not a JSON array")))?;
         for (i, v) in arr.iter().enumerate() {
             let n = v.as_safe_integer().ok_or_else(|| {
-                Fail(format!(
+                Fail::new("ref-malformed", format!(
                     "{what}.observationRefs[{i}] is not an integer index"
                 ))
             })?;
@@ -744,7 +771,7 @@ fn parse_row<'a>(row: &'a Value, idx: usize) -> R<Row<'a>> {
 pub fn check(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> Verdict {
     match check_inner(statement_bytes, pinned_key) {
         Ok(v) => v,
-        Err(Fail(reason)) => Verdict::Invalid { reason },
+        Err(f) => Verdict::Invalid { reason: f.msg, code: f.code },
     }
 }
 
@@ -823,7 +850,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
         posture_token,
         "allowlist" | "no_network" | "sinkhole" | "unsafe_bypass_egress"
     ) {
-        return Err(Fail(format!(
+        return Err(Fail::new("posture-vocabulary", format!(
             "networkPosture.posture {posture_token:?} is outside the registered vocabulary"
         )));
     }
@@ -838,17 +865,18 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
         let mut prev: Option<Vec<u16>> = None;
         for (i, v) in arr.iter().enumerate() {
             let s = v.as_str().ok_or_else(|| {
-                Fail(format!("observationVocabulary.{name}[{i}] is not a JSON string"))
+                Fail::new("vocabulary-missing", format!("observationVocabulary.{name}[{i}] is not a JSON string"))
             })?;
             if !json::is_bmp_only(s) {
-                return Err(Fail(format!(
+                return Err(Fail::new("vocabulary-missing", format!(
                     "observationVocabulary.{name} entry {s:?} carries a code point above U+FFFF"
                 )));
             }
             let units = json::utf16_units(s);
             if let Some(p) = &prev {
                 if *p >= units {
-                    return Err(Fail(format!(
+                    return Err(Fail::new(
+            "vocabulary-not-canonical", format!(
                         "observationVocabulary.{name} is not strictly ascending by UTF-16 code unit at index {i}"
                     )));
                 }
@@ -862,7 +890,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
     let caught = check_vocab_array(caught_arr, "caught")?;
     for c in &caught {
         if !labels.contains(c) {
-            return Err(Fail(format!(
+            return Err(Fail::new("vocabulary-caught-not-subset", format!(
                 "observationVocabulary.caught entry {c:?} is not in labels"
             )));
         }
@@ -917,7 +945,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
         })?;
         for (attack, _vals) in obj {
             if !manifest_attacks.iter().any(|(_, a)| a == attack) {
-                return Err(Fail(format!(
+                return Err(Fail::new("manifest-expected-payloads-malformed", format!(
                     "corpus.manifest.expectedPayloads key {attack:?} is not an attackId the manifest declares"
                 )));
             }
@@ -929,7 +957,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
             )
             .map_err(Fail)?;
             if entries.is_empty() {
-                return Err(Fail(format!(
+                return Err(Fail::new("manifest-expected-payloads-malformed", format!(
                     "corpus.manifest.expectedPayloads[{attack:?}] is empty"
                 )));
             }
@@ -1062,7 +1090,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
 
     for (i, row) in rows.iter().enumerate() {
         if !manifest_attacks.iter().any(|(_, a)| a == row.attack_id) {
-            return Err(Fail(format!(
+            return Err(Fail::new("row-attack-unknown", format!(
                 "attackResults[{i}].attackId {:?} does not appear in the corpus manifest",
                 row.attack_id
             )));
@@ -1078,7 +1106,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
             .collect();
         for a in &expected {
             if !rows.iter().any(|r| r.attack_id == a.as_str()) {
-                return Err(Fail(format!(
+                return Err(Fail::new("coverage-incomplete", format!(
                     "manifest attack {a:?} in an assessed class has no attackResults row"
                 )));
             }
@@ -1100,7 +1128,8 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
             if clean {
                 let layer = r.get("actualLayer").and_then(|v| v.as_str()).unwrap_or("");
                 if layer != "none" {
-                    return Err(Fail(format!(
+                    return Err(Fail::new(
+            "clean-row-layer-not-none", format!(
                         "attackResults[{i}] is a clean row but actualLayer is {layer:?}, not the literal \"none\""
                     )));
                 }
@@ -1142,7 +1171,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
     for (i, row) in rows.iter().enumerate() {
         for &r in &row.refs {
             if r < 0 || r as usize >= records.len() {
-                return Err(Fail(format!(
+                return Err(Fail::new("ref-out-of-range", format!(
                     "attackResults[{i}].observationRefs index {r} is out of range for observationRecords"
                 )));
             }
@@ -1350,7 +1379,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
             let mut non_covering_why: Vec<String> = Vec::new();
             for &r in &row.refs {
                 if r < 0 || r as usize >= records.len() {
-                    return Err(Fail(format!(
+                    return Err(Fail::new("ref-out-of-range", format!(
                         "attackResults[{i}].observationRefs index {r} is out of range for observationRecords"
                     )));
                 }
@@ -1495,12 +1524,12 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                     match pl.get("aeeObservedSet").and_then(|v| v.as_str()) {
                         Some(v) if v == observed_set => {}
                         Some(_) => {
-                            return Err(Fail(format!(
+                            return Err(Fail::new("observed-set-mismatch", format!(
                                 "observationRecords[{idx}] is a sealed record whose aeeObservedSet does not equal the recompute over the carried records"
                             )))
                         }
                         None => {
-                            return Err(Fail(format!(
+                            return Err(Fail::new("observed-set-mismatch", format!(
                                 "observationRecords[{idx}] is a sealed record carrying no aeeObservedSet"
                             )))
                         }
@@ -1543,7 +1572,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                                 && r.label.is_some_and(|l| caught.iter().any(|c| c == l))
                         });
                         if !obliged {
-                            return Err(Fail(format!(
+                            return Err(Fail::new("observed-attack-uncaught", format!(
                                 "sealed record aeeObservedAttacks names {attack:?} but the statement carries no caught row for it"
                             )));
                         }
@@ -1571,7 +1600,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                 for class in &assessed {
                     for (c, attack) in &manifest_attacks {
                         if c == class && !declared.iter().any(|d| d == attack) {
-                            return Err(Fail(format!(
+                            return Err(Fail::new("assessed-set-exceeds-declaration", format!(
                                 "coverage.assessedClasses names {class:?} but the arming record's aeeAssessedAttacks omits its attackId {attack:?}"
                             )));
                         }
@@ -1595,7 +1624,8 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                 .find(|(a, _)| a == row.attack_id)
                 .map(|(_, v)| v)
                 .ok_or_else(|| {
-                    Fail(format!(
+                    Fail::new(
+            "attribution-unpinnable", format!(
                         "attackResults[{i}] declares attribution pinned but its attackId carries no expectedPayloads entry"
                     ))
                 })?;
@@ -1670,7 +1700,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
         "pass"
     };
     if carried_result != recomputed {
-        return Err(Fail(format!(
+        return Err(Fail::new("result-recompute-mismatch", format!(
             "carried result {carried_result:?} does not match the recomputed result {recomputed:?}"
         )));
     }

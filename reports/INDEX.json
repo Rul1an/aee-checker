@@ -100,8 +100,8 @@
   },
   {
    "file": "v0.7-directed-run.json",
-   "reportSha256": "sha256:24f03cc81709f8e0f0d7ec85bc61af0dfa033a2eca2451c13438be7f676d3ef2",
-   "checkerSourceDigest": "sha256:56f440e628ff39e49d92968943c5bce6024503169dfa394671f848f1e98e67e2",
+   "reportSha256": "sha256:24098136bfd23ec5c132b50cbaf974069dca9d81593253b1977fe505c85f913c",
+   "checkerSourceDigest": "sha256:4fcce5ccf36f5f52e69486d369509ba658f83fb8ce7b060fdc9793ad751d7df1",
    "suiteRevision": 22,
    "suiteCommit": "84ba227155f55b653deed5051027f9aecdd2159f",
    "specDigest": "sha256:94de8da54af6a2fe4c897f606ca22bfd054f4238b3c85db031ddc703516331b5",
@@ -110,7 +110,8 @@
    "rejectParity": "176/176",
    "indeterminateParity": "2/2",
    "continuouslyVerified": true,
-   "note": "Directed: followed a spec diff already read, and for bad-902 an adversarial review of this implementation. Reproduces exactly from the working tree."
+   "note": "Directed: followed a spec diff already read, and for bad-902 an adversarial review of this implementation. Reproduces exactly from the working tree. Carries per-vector condition codes from this revision; reasonParity is a comparison against the corpus's declared codes rather than a prose mapping.",
+   "reasonParity": "60/176"
   }
  ]
 }

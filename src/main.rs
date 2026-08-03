@@ -174,12 +174,16 @@ fn main() {
     let mut reject_match = 0;
     let mut ind_total = 0;
     let mut ind_match = 0;
+    let mut reason_total = 0;
+    let mut reason_match = 0;
+    let mut reason_divergences: Vec<String> = Vec::new();
     let mut mismatches: Vec<String> = Vec::new();
 
     for exp in &expectations {
         let path = vectors_dir.join(&exp.file);
         let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("cannot read {path:?}: {e}"));
         let verdict = check::check(&bytes, Some(&pinned));
+        let mut got_code: Option<&'static str> = None;
         let (got_verdict, got_result, reason, tiers_wk, tiers_nk) = match &verdict {
             Verdict::Valid {
                 result,
@@ -192,7 +196,10 @@ fn main() {
                 Some(tiers_with_key.clone()),
                 Some(tiers_without_key.clone()),
             ),
-            Verdict::Invalid { reason } => ("invalid", None, Some(reason.clone()), None, None),
+            Verdict::Invalid { reason, code } => {
+                got_code = Some(*code);
+                ("invalid", None, Some(reason.clone()), None, None)
+            }
         };
 
         let mut ok = got_verdict == exp.verdict;
@@ -211,6 +218,31 @@ fn main() {
         // `indeterminate` into the rejects reports a fraction of a corpus that
         // does not exist, which is exactly what the suite's own transcription
         // rule refuses.
+        // Reason parity: the emitted condition must be one the corpus declares for
+        // this vector, counting alsoCarries as the widening set it is. Scored only
+        // where the verdict already agrees, since a wrong verdict makes the
+        // condition question moot.
+        // Scored only where the verdict already agrees: a wrong verdict makes the
+        // condition question moot, and counting it would put a row in the
+        // denominator that the numerator can never reach. Rows whose verdict
+        // diverges are reported by the verdict parity above, not hidden here.
+        if !exp.codes.is_empty() && ok {
+            reason_total += 1;
+            if ok
+                && got_code.is_some_and(|c| {
+                    exp.codes.iter().any(|d| d == c) || exp.also_carries.iter().any(|d| d == c)
+                })
+            {
+                reason_match += 1;
+            } else if ok {
+                reason_divergences.push(format!(
+                    "REASON {}: corpus {:?}, emitted {:?}",
+                    exp.id,
+                    exp.codes,
+                    got_code.unwrap_or("(none)")
+                ));
+            }
+        }
         match exp.kind.as_str() {
             "accept" => {
                 accept_total += 1;
@@ -252,10 +284,11 @@ fn main() {
             }
         };
         lines_json.push(format!(
-            "{{\"id\":{},\"verdict\":{},\"result\":{},\"reason\":{},\"tiersWithPinnedKey\":{},\"tiersWithoutKey\":{},\"parity\":{}}}",
+            "{{\"id\":{},\"verdict\":{},\"result\":{},\"code\":{},\"reason\":{},\"tiersWithPinnedKey\":{},\"tiersWithoutKey\":{},\"parity\":{}}}",
             json_escape(&exp.id),
             json_escape(got_verdict),
             got_result.as_deref().map(json_escape).unwrap_or("null".into()),
+            got_code.map(json_escape).unwrap_or("null".into()),
             reason.as_deref().map(json_escape).unwrap_or("null".into()),
             tiers_field(&tiers_wk),
             tiers_field(&tiers_nk),
@@ -280,7 +313,7 @@ fn main() {
 
     println!();
     println!(
-        "parity: accepts {accept_match}/{accept_total}, rejects {reject_match}/{reject_total}, indeterminate {ind_match}/{ind_total}"
+        "parity: accepts {accept_match}/{accept_total}, rejects {reject_match}/{reject_total}, indeterminate {ind_match}/{ind_total}\nreason parity: {reason_match}/{reason_total}"
     );
     for m in &mismatches {
         println!("{m}");
