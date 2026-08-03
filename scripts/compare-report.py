@@ -56,7 +56,7 @@ def main(fresh_path: str, pinned_path: str) -> int:
             fields = sorted(k for k in set(a) | set(b) if a.get(k) != b.get(k))
             print(f"differs: {name}: {', '.join(fields)}", file=sys.stderr)
 
-    for key in ("suite", "acceptParity", "rejectParity"):
+    for key in ("suite", "acceptParity", "rejectParity", "indeterminateParity"):
         if fresh.get(key) != pinned.get(key):
             print(
                 f"differs: {key}: fresh={fresh.get(key)!r} pinned={pinned.get(key)!r}",

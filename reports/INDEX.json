@@ -87,7 +87,7 @@
    "file": "v0.7-blind-run.json",
    "reportSha256": "sha256:3795df144b642f2a171ea2727e1e13686423dfd893725c430a39adf86e6fbea1",
    "checkerSourceDigest": null,
-   "suiteRevision": 20,
+   "suiteRevision": 22,
    "suiteCommit": "84ba22718e5b2e0e0b04e3a1b8c6dbbe9e3b1f6a",
    "specDigest": "sha256:94de8da54af6a2fe4c897f606ca22bfd054f4238b3c85db031ddc703516331b5",
    "vectors": 232,
@@ -95,13 +95,14 @@
    "rejectParity": "169/176",
    "indeterminateParity": "2/2",
    "continuouslyVerified": false,
-   "note": "THE BLIND SOURCE IS NOT RECOVERABLE AND THIS RECORD SAYS SO RATHER THAN NAMING A DIGEST THAT IS NOT ITS OWN. The blind build was never committed on its own: 46ca0ee carries both the v0.7 implementation and this published number, so no tree in this repository hashes to the build that produced 179/232. checkerSourceDigest is null for that reason and must not be filled with the directed build's digest, which would name a different implementation. The figure is therefore attested by the pin record and the commit ordering (9c24409 precedes any v0.7 source by 89 minutes) and is NOT independently reproducible, including by its author. That is a defect in this run's provenance, found in adversarial review before publication, and the protocol rule it breaks is PIN-v0.7-RUN.md rule 6. A future blind pass commits the build before running it."
+   "note": "Blind first run. Source not recoverable; see sourceUnrecoverable. The record file's indeterminateParity and $comment were appended by hand when the denominator was corrected, so the file's shape is not one this binary emits.",
+   "sourceUnrecoverable": "The blind build was never committed on its own: 46ca0ee carries both the v0.7 implementation and this number, so no tree in this repository hashes to the build that produced 179/232. The figure is attested by the pin record and the commit ordering and is not independently reproducible, including by its author. Breaks PROTOCOL-v0.7.md rule 6; a future blind pass commits the build before running it."
   },
   {
    "file": "v0.7-directed-run.json",
-   "reportSha256": "sha256:5e3875c3926f8899da4b35ff40e6a1a05b8c24741adfb540c9eace28822302c2",
-   "checkerSourceDigest": "sha256:1d481beae2f4390f565b4749228937f4e511e87abbbf49123167e6b119ecf57e",
-   "suiteRevision": 20,
+   "reportSha256": "sha256:24f03cc81709f8e0f0d7ec85bc61af0dfa033a2eca2451c13438be7f676d3ef2",
+   "checkerSourceDigest": "sha256:7e00141ec39abbf51ed9e88ab97e7671cae15c7a94648f9a252c4262f84073a5",
+   "suiteRevision": 22,
    "suiteCommit": "84ba22718e5b2e0e0b04e3a1b8c6dbbe9e3b1f6a",
    "specDigest": "sha256:94de8da54af6a2fe4c897f606ca22bfd054f4238b3c85db031ddc703516331b5",
    "vectors": 232,

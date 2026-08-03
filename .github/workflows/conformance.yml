@@ -1,7 +1,7 @@
 name: conformance
 
 # The parity number in the README is only worth what a third party can re-run.
-# This pins the suite commit and the spec digest, demands the full 153/153, and
+# This pins the suite commit and the spec digest, demands the full 232/232, and
 # compares a fresh run against the checked-in evidence, so the repository cannot
 # drift away from its own claim.
 on:
@@ -67,11 +67,11 @@ jobs:
         # something is already wrong, so it gets held shut here.
         run: python3 tests/test_compare_report.py
 
-      - name: Full corpus, 153/153 required
+      - name: Full corpus, 232/232 required
         run: |
           set -euo pipefail
           cargo run --locked --release -- aee-conformance/vectors --json fresh.json | tee run.txt
           grep -q 'parity: accepts 54/54, rejects 176/176, indeterminate 2/2' run.txt
 
       - name: Fresh run must match the checked-in evidence
-        run: python3 scripts/compare-report.py fresh.json reports/suite-revision-6.json
+        run: python3 scripts/compare-report.py fresh.json reports/v0.7-directed-run.json

@@ -1272,9 +1272,24 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
     // Every arming record's declared posture, for the sealed covering rule's
     // second conjunct. Read from the carried records rather than from the rows,
     // because the rule ranges over the statement and not over a reference.
-    let arming_postures: Vec<String> = records
+    // The covering rule says "the arming record's", singular and definite, so the
+    // comparison ranges over arming records a row actually resolves and not over
+    // every record carrying the kind token. Ranging over all of them re-opens the
+    // over-rejection the binding-version fix above closes: a statement carrying a
+    // second arming record that covers nothing would be refused on the posture of
+    // a record this document removes from consideration. The corpus cannot tell
+    // the two readings apart (only bad-902 carries divergent arming postures, and
+    // its offending record is referenced), so the scope is untested here and the
+    // report says so.
+    let referenced_arming: std::collections::BTreeSet<usize> = rows
         .iter()
-        .filter(|r| record_kind_of(r) == RecordKind::Arming)
+        .flat_map(|r| r.refs.iter().copied())
+        .filter_map(|i| usize::try_from(i).ok())
+        .filter(|i| records.get(*i).map(record_kind_of) == Some(RecordKind::Arming))
+        .collect();
+    let arming_postures: Vec<String> = referenced_arming
+        .iter()
+        .filter_map(|i| records.get(*i))
         .filter_map(|r| {
             r.payload
                 .as_ref()
@@ -1333,6 +1348,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                 )));
             }
             let mut covering_kinds: Vec<(RecordKind, Option<Method>, bool)> = Vec::new();
+            let mut non_covering_why: Vec<String> = Vec::new();
             for &r in &row.refs {
                 if r < 0 || r as usize >= records.len() {
                     return Err(Fail(format!(
@@ -1344,41 +1360,47 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                     cover_cache[idx] = Some(referenced_record_validity(&records[idx], idx, &ctx)?);
                 }
                 let ce = cover_cache[idx].as_ref().unwrap();
-                if ce.non_covering.is_none() {
+                if let Some(why) = ce.non_covering.as_ref() {
+                    // The spec requires a covers-nothing refusal be reported
+                    // distinguishably. Constructing the reason and dropping it
+                    // leaves every such row under one generic message.
+                    non_covering_why.push(why.clone());
+                } else {
                     covering_kinds.push((ce.kind, ce.method, ce.sealed_covers_clean));
                     row_covering[i].push(idx);
                 }
             }
             // Class match.
             let has = |k: RecordKind| covering_kinds.iter().any(|(kind, _, _)| *kind == k);
+            // Appended to an uncovered-row refusal so the reason names the
+            // condition rather than only the consequence.
+            let because = |base: String| -> String {
+                if non_covering_why.is_empty() {
+                    base
+                } else {
+                    format!("{base} ({})", non_covering_why.join("; "))
+                }
+            };
             match (is_caught, method) {
                 (true, Method::Intercepted) => {
                     if !has(RecordKind::Interception) {
-                        return Err(Fail(format!(
-                            "attackResults[{i}] is a caught intercepted row with no covering interception record"
-                        )));
+                        return Err(Fail(because(format!("attackResults[{i}] is a caught intercepted row with no covering interception record"))));
                     }
                 }
                 (_, Method::Reconstructed) => {
                     if !has(RecordKind::Examination) {
-                        return Err(Fail(format!(
-                            "attackResults[{i}] is a reconstructed row with no covering examination record"
-                        )));
+                        return Err(Fail(because(format!("attackResults[{i}] is a reconstructed row with no covering examination record"))));
                     }
                 }
                 (false, Method::Intercepted) => {
                     if !has(RecordKind::Arming) {
-                        return Err(Fail(format!(
-                            "attackResults[{i}] is a clean intercepted row with no covering arming record"
-                        )));
+                        return Err(Fail(because(format!("attackResults[{i}] is a clean intercepted row with no covering arming record"))));
                     }
                     let sealed_ok = covering_kinds
                         .iter()
                         .any(|(k, _, clean)| *k == RecordKind::Sealed && *clean);
                     if !sealed_ok {
-                        return Err(Fail(format!(
-                            "attackResults[{i}] is a clean intercepted row with no covering sealed record"
-                        )));
+                        return Err(Fail(because(format!("attackResults[{i}] is a clean intercepted row with no covering sealed record"))));
                     }
                 }
             }
