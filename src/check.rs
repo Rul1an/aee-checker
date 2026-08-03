@@ -20,7 +20,7 @@ use sha2::{Digest, Sha256};
 
 pub const STATEMENT_TYPE: &str = "https://in-toto.io/Statement/v1";
 pub const PREDICATE_TYPE: &str =
-    "https://in-toto.io/attestation/adversarial-execution-evidence/v0.6";
+    "https://in-toto.io/attestation/adversarial-execution-evidence/v0.7";
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Verdict {
@@ -106,7 +106,62 @@ enum RecordKind {
     Arming,
     Sealed,
     Examination,
+    /// Registered by 0.7 and covering nothing by registration. Distinct from
+    /// `Unknown` so a citation of a kind that covers nothing can be reported
+    /// under a condition naming the kind, which the spec asks for as a
+    /// diagnostic obligation rather than a validity rule.
+    CoversNothing,
     Unknown,
+}
+
+fn parse_kind(tok: &str) -> RecordKind {
+    match tok {
+        "interception" => RecordKind::Interception,
+        "arming" => RecordKind::Arming,
+        "sealed" => RecordKind::Sealed,
+        "examination" => RecordKind::Examination,
+        "moat-drop" | "uncommitted-observation" => RecordKind::CoversNothing,
+        _ => RecordKind::Unknown,
+    }
+}
+
+/// A duplicate-free array of lowercase 64-hex strings, sorted strictly
+/// ascending by UTF-16 code unit. Three 0.7 members carry this shape
+/// (`aeePayloadCommitment`) or its attack-identifier sibling; the sortedness
+/// rule is the one the vocabulary arrays already carry (RFC 8785 3.2.3).
+fn read_sorted_unique_strings(
+    payload: &Value,
+    member: &str,
+    what: &str,
+    require_hex64: bool,
+) -> Result<Vec<String>, String> {
+    let v = payload
+        .get(member)
+        .ok_or_else(|| format!("{what} payload is missing {member}"))?;
+    let arr = v
+        .as_array()
+        .ok_or_else(|| format!("{what} {member} is not a JSON array"))?;
+    let mut out: Vec<String> = Vec::new();
+    let mut prev: Option<Vec<u16>> = None;
+    for (i, e) in arr.iter().enumerate() {
+        let s = e
+            .as_str()
+            .ok_or_else(|| format!("{what} {member}[{i}] is not a JSON string"))?;
+        if require_hex64 && !is_lower_hex64(s) {
+            return Err(format!("{what} {member}[{i}] is not lowercase 64-hex"));
+        }
+        let units = json::utf16_units(s);
+        if let Some(p) = &prev {
+            if *p >= units {
+                return Err(format!(
+                    "{what} {member} is not strictly ascending by UTF-16 code unit at index {i}"
+                ));
+            }
+        }
+        prev = Some(units);
+        out.push(s.to_string());
+    }
+    Ok(out)
 }
 
 struct RecordEval {
@@ -164,6 +219,9 @@ fn eval_record(rec: &Value, idx: usize) -> R<RecordEval> {
     let payload_b64 = req_str(rec, "payload", &what)?;
     let payload_type = req_str(rec, "payloadType", &what)?;
     let sigs = req_arr(rec, "signatures", &what)?;
+    if sigs.is_empty() {
+        return Err(Fail(format!("{what}.signatures carries no entry")));
+    }
     let mut sig_bytes = Vec::new();
     for (i, s) in sigs.iter().enumerate() {
         if s.as_object().is_none() {
@@ -242,6 +300,24 @@ struct Ctx<'a> {
     run_binding: &'a str,
     posture_digest: &'a str,
     issued_at: time::Instant,
+    /// Every attackId the carried manifest declares. `aeeAssessedAttacks` and
+    /// `aeeObservedAttacks` entries must each be one of these.
+    manifest_attacks: &'a [String],
+    /// The value `aeeObservedSet` must equal, recomputed over the carried
+    /// interception and examination records.
+    observed_set: &'a str,
+}
+
+/// The `aeeKind` token of a carried record, read without applying any
+/// kind-specific constraint. Needed because 0.7 requirements range over every
+/// carried record rather than only the referenced ones: the `aeeObservedSet`
+/// recompute, the interception-is-resolved rule, and the unconditional sealed
+/// requirement all quantify over the whole array.
+fn record_kind_of(rec: &RecordEval) -> RecordKind {
+    match rec.payload.as_ref().and_then(|p| p.get("aeeKind")).and_then(|v| v.as_str()) {
+        Some(tok) => parse_kind(tok),
+        None => RecordKind::Unknown,
+    }
 }
 
 /// The hard part of the coverage-validity bullet: every referenced payload
@@ -272,24 +348,25 @@ fn referenced_record_validity(rec: &RecordEval, idx: usize, ctx: &Ctx) -> R<Cove
     // A binding version this verifier does not implement is rejected
     // fail-closed rather than attempting another construction.
     if let Some(bv) = payload.get("aeeBindingVersion") {
-        if bv.as_str() != Some("1") {
+        if bv.as_str() != Some("2") {
             return Err(Fail(format!(
                 "{what} payload declares a run-binding version this verifier does not implement"
             )));
         }
     }
-    let kind = match kind_tok {
-        "interception" => RecordKind::Interception,
-        "arming" => RecordKind::Arming,
-        "sealed" => RecordKind::Sealed,
-        "examination" => RecordKind::Examination,
-        _ => RecordKind::Unknown,
-    };
+    let kind = parse_kind(kind_tok);
     let method = parse_method(method_tok);
     let mut non_covering: Option<String> = None;
     let mut sealed_covers_clean = false;
 
-    if kind == RecordKind::Unknown {
+    if kind == RecordKind::CoversNothing {
+        // Registered, verified, included in the batchRoot recompute, and
+        // admitted to nothing: not a row's coverage, not the method cap, not
+        // the aeeObservedSet recompute.
+        non_covering = Some(format!(
+            "record kind {kind_tok:?} is registered and covers nothing by registration"
+        ));
+    } else if kind == RecordKind::Unknown {
         non_covering = Some(format!("record kind {kind_tok:?} is not recognized"));
     } else if method.is_none() {
         non_covering = Some(format!(
@@ -297,7 +374,23 @@ fn referenced_record_validity(rec: &RecordEval, idx: usize, ctx: &Ctx) -> R<Cove
         ));
     } else {
         match kind {
-            RecordKind::Interception => {}
+            RecordKind::Interception => {
+                // 0.7: names what an interception has always carried and had
+                // no reserved spelling for. Required, non-empty, hex64.
+                match read_sorted_unique_strings(
+                    payload,
+                    "aeePayloadCommitment",
+                    "interception record",
+                    true,
+                ) {
+                    Ok(c) if c.is_empty() => {
+                        non_covering =
+                            Some("interception record aeePayloadCommitment is empty".into());
+                    }
+                    Ok(_) => {}
+                    Err(e) => non_covering = Some(e),
+                }
+            }
             RecordKind::Arming => {
                 if method != Some(Method::Intercepted) {
                     non_covering =
@@ -323,7 +416,7 @@ fn referenced_record_validity(rec: &RecordEval, idx: usize, ctx: &Ctx) -> R<Cove
                         Some("examination record is not signed aeeMethod reconstructed".into());
                 }
             }
-            RecordKind::Unknown => unreachable!(),
+            RecordKind::Unknown | RecordKind::CoversNothing => unreachable!(),
         }
     }
     Ok(CoverEval {
@@ -345,11 +438,23 @@ fn check_arming(payload: &Value, ctx: &Ctx) -> R<()> {
         .ok_or_else(|| Fail("arming record payload is missing armedAt".into()))?;
     let parsed = time::parse_rfc3339(armed_at)
         .ok_or_else(|| Fail("arming record armedAt is not an RFC 3339 timestamp".into()))?;
-    if !parsed.utc_offset {
-        return Err(Fail("arming record armedAt is not stated in UTC".into()));
+    if !parsed.profile_ok {
+        return Err(Fail(
+            "arming record armedAt is RFC 3339 but outside the timestamp profile".into(),
+        ));
     }
     if parsed.instant > ctx.issued_at {
         return Err(Fail("arming record armedAt is later than issuedAt".into()));
+    }
+    // 0.7: the attacks this run declared, before injection, it would assess.
+    let assessed = read_sorted_unique_strings(payload, "aeeAssessedAttacks", "arming record", false)
+        .map_err(Fail)?;
+    for a in &assessed {
+        if !ctx.manifest_attacks.iter().any(|m| m == a) {
+            return Err(Fail(format!(
+                "arming record aeeAssessedAttacks entry {a:?} is not an attackId the carried manifest declares"
+            )));
+        }
     }
     let posture = payload
         .get("aeePostureDigest")
@@ -481,6 +586,34 @@ fn check_sealed(payload: &Value, ctx: &Ctx) -> R<bool> {
             Fail("sealed record aeeDropBound is not a safe-range integer".into())
         })?),
     };
+    // 0.7: a commitment, by a party that does not control the carried set, to
+    // the set of interception and examination records the substrate emitted.
+    let observed_set = payload
+        .get("aeeObservedSet")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| Fail("sealed record payload is missing aeeObservedSet".into()))?;
+    if !is_lower_hex64(observed_set) {
+        return Err(Fail("sealed record aeeObservedSet is not lowercase 64-hex".into()));
+    }
+    if observed_set != ctx.observed_set {
+        return Err(Fail(
+            "sealed record aeeObservedSet does not equal the value recomputed over the carried records".into(),
+        ));
+    }
+    // 0.7: the attacks this run attributed at least one of its own
+    // observations to. The empty array is the honest value and is required
+    // rather than omissible, so a substrate holding no correspondence says so
+    // on the wire instead of leaving an absence nothing records.
+    let observed_attacks =
+        read_sorted_unique_strings(payload, "aeeObservedAttacks", "sealed record", false)
+            .map_err(Fail)?;
+    for a in &observed_attacks {
+        if !ctx.manifest_attacks.iter().any(|m| m == a) {
+            return Err(Fail(format!(
+                "sealed record aeeObservedAttacks entry {a:?} is not an attackId the carried manifest declares"
+            )));
+        }
+    }
     // Clean-row covering conditions (each a check on signed carried bytes).
     let covers_clean = still_armed
         && (drop_count == 0 || drop_bound.is_some_and(|b| drop_count <= b))
@@ -498,6 +631,10 @@ struct Row<'a> {
     label: Option<&'a str>,
     basis: Option<&'a str>,
     method: Option<&'a str>,
+    /// 0.7: how firmly the row is bound to the records that cover it.
+    /// Closed vocabulary `pinned` / `paired`, fail-closed on absence or an
+    /// unrecognized value exactly as `basis` and `method` are.
+    attribution: Option<&'a str>,
     refs: Vec<i64>,
 }
 
@@ -527,6 +664,13 @@ fn parse_row<'a>(row: &'a Value, idx: usize) -> R<Row<'a>> {
         Some(v) => {
             Some(v.as_str().ok_or_else(|| Fail(format!("{what}.method is not a JSON string")))?)
         }
+    };
+    let attribution = match row.get("attribution") {
+        None => None,
+        Some(v) => Some(
+            v.as_str()
+                .ok_or_else(|| Fail(format!("{what}.attribution is not a JSON string")))?,
+        ),
     };
     // actualLayer is required on every row: a missing member is a
     // malformed statement, and so is a wrong-typed one.
@@ -573,6 +717,7 @@ fn parse_row<'a>(row: &'a Value, idx: usize) -> R<Row<'a>> {
         label,
         basis,
         method,
+        attribution,
         refs,
     })
 }
@@ -627,9 +772,17 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
     }
 
     let issued_at_str = req_str(pred, "issuedAt", "predicate")?;
-    let issued_at = time::parse_rfc3339(issued_at_str)
-        .ok_or_else(|| Fail("issuedAt is not an RFC 3339 timestamp".into()))?
-        .instant;
+    let issued_at_parsed = time::parse_rfc3339(issued_at_str)
+        .ok_or_else(|| Fail("issuedAt is not an RFC 3339 timestamp".into()))?;
+    // One profile for both timestamps: uppercase separator and designator, and
+    // a zone of Z, +00:00 or -00:00. Restating half of it on one field is what
+    // let a statement be conformant here and off-guideline at the same time.
+    if !issued_at_parsed.profile_ok {
+        return Err(Fail(
+            "issuedAt is RFC 3339 but outside this predicate's timestamp profile".into(),
+        ));
+    }
+    let issued_at = issued_at_parsed.instant;
 
     let carried_result = req_str(pred, "result", "predicate")?;
 
@@ -648,7 +801,17 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
     let corpus_digest = digest_sha256(corpus, "observationEnvironment.corpus")?;
     let manifest = req_obj(corpus, "manifest", "observationEnvironment.corpus")?;
     let catch_policy_digest = digest_sha256(catch_policy, "observationEnvironment.catchPolicy")?;
-    req_str(posture, "posture", "observationEnvironment.networkPosture")?;
+    let posture_token = req_str(posture, "posture", "observationEnvironment.networkPosture")?;
+    // Closed by registration: a minor version MAY append a value and MUST NOT
+    // redefine one, so an unregistered value is malformed rather than ignored.
+    if !matches!(
+        posture_token,
+        "allowlist" | "no_network" | "sinkhole" | "unsafe_bypass_egress"
+    ) {
+        return Err(Fail(format!(
+            "networkPosture.posture {posture_token:?} is outside the registered vocabulary"
+        )));
+    }
     let posture_digest = digest_sha256(posture, "observationEnvironment.networkPosture")?;
 
     // ---- observationVocabulary rules --------------------------------------
@@ -727,6 +890,50 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
             manifest_attacks.push((class.clone(), id.to_string()));
         }
     }
+    // 0.7: optional map from attackId to the commitment values a substrate is
+    // expected to carry when it observes that attack. Every key must be an
+    // attackId the same manifest declares; every array non-empty, sorted
+    // ascending by UTF-16 code unit, duplicate-free, lowercase 64-hex. A
+    // manifest violating any of these is malformed.
+    let mut expected_payloads: Vec<(String, Vec<String>)> = Vec::new();
+    if let Some(ep) = manifest.get("expectedPayloads") {
+        let obj = ep.as_object().ok_or_else(|| {
+            Fail("corpus.manifest.expectedPayloads is not a JSON object".into())
+        })?;
+        for (attack, vals) in obj {
+            if !manifest_attacks.iter().any(|(_, a)| a == attack) {
+                return Err(Fail(format!(
+                    "corpus.manifest.expectedPayloads key {attack:?} is not an attackId the manifest declares"
+                )));
+            }
+            let entries = read_sorted_unique_strings(
+                ep,
+                attack,
+                "corpus.manifest.expectedPayloads",
+                true,
+            )
+            .map_err(Fail)?;
+            if entries.is_empty() {
+                return Err(Fail(format!(
+                    "corpus.manifest.expectedPayloads[{attack:?}] is empty"
+                )));
+            }
+            let _ = vals;
+            expected_payloads.push((attack.clone(), entries));
+        }
+    }
+
+    // The manifest floor: coverage integrity is only as strong as the manifest
+    // it reads against, so a manifest declaring zero attack identifiers makes
+    // the statement malformed. Phrased over identifiers rather than classes
+    // because an empty classes object and a named class with an empty array are
+    // the same defect.
+    if manifest_attacks.is_empty() {
+        return Err(Fail(
+            "corpus.manifest declares no attack identifier across its classes".into(),
+        ));
+    }
+
     if jcs_sha256_hex(manifest)? != corpus_digest {
         return Err(Fail(
             "corpus.digest does not re-derive from the embedded manifest".into(),
@@ -994,11 +1201,22 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                 )));
             }
         }
+        // Binding version 2. Two inputs differ from version 1: `networkPosture`
+        // is the canonical digest of the CARRIED OBJECT rather than the value of
+        // that member's own `digest.sha256` (so the posture string and every
+        // further member sit inside the binding), and `observationVocabulary`
+        // becomes an input at all (so a narrowed caught set derives a different
+        // binding and every record then fails the comparison).
+        let posture_object_digest = jcs_sha256_hex(posture)?;
         let preimage = Value::Object(vec![
-            ("aeeBindingVersion".into(), Value::String("1".into())),
+            ("aeeBindingVersion".into(), Value::String("2".into())),
             ("catchPolicy".into(), Value::String(catch_policy_digest.into())),
             ("corpus".into(), Value::String(corpus_digest.into())),
-            ("networkPosture".into(), Value::String(posture_digest.into())),
+            ("networkPosture".into(), Value::String(posture_object_digest)),
+            (
+                "observationVocabulary".into(),
+                Value::String(vocab_digest.into()),
+            ),
             ("runEntropy".into(), Value::String(run_entropy_digest.into())),
             ("subject".into(), Value::String(subject_digest.into())),
             ("substrate".into(), Value::String(substrate_digest.into())),
@@ -1013,11 +1231,37 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
     let mut cover_cache: Vec<Option<CoverEval>> = (0..records.len()).map(|_| None).collect();
     let mut row_covering: Vec<Vec<usize>> = vec![Vec::new(); rows.len()];
 
+    // The value every carried sealed record must commit to: the duplicate-free,
+    // UTF-16-sorted array of the lowercase 64-hex leaf hashes of every carried
+    // interception and examination record, canonicalized and hashed. Records
+    // registered as covering nothing are excluded by the member's own
+    // definition, which names the two kinds it ranges over.
+    let observed_set = {
+        let mut leaves: Vec<String> = records
+            .iter()
+            .filter(|r| {
+                matches!(
+                    record_kind_of(r),
+                    RecordKind::Interception | RecordKind::Examination
+                )
+            })
+            .map(|r| hex::encode(r.leaf))
+            .collect();
+        leaves.sort_by_key(|h| json::utf16_units(h));
+        leaves.dedup();
+        let arr = Value::Array(leaves.into_iter().map(Value::String).collect());
+        jcs_sha256_hex(&arr)?
+    };
+    let manifest_attack_ids: Vec<String> =
+        manifest_attacks.iter().map(|(_, a)| a.clone()).collect();
+
     if substrate_carrying {
         let ctx = Ctx {
             run_binding: run_binding.as_deref().unwrap(),
             posture_digest,
             issued_at,
+            manifest_attacks: &manifest_attack_ids,
+            observed_set: &observed_set,
         };
         for (i, row) in rows.iter().enumerate() {
             if row.basis != Some("substrate") {
@@ -1043,6 +1287,14 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                         "attackResults[{i}] is a substrate row with a missing or out-of-vocabulary method"
                     ))
                 })?;
+            // `attribution` fail-closes on the same terms as `basis` and
+            // `method`, so a substrate row fail-closed on it cannot satisfy the
+            // class-match requirement either and the statement is invalid.
+            if !matches!(row.attribution, Some("pinned") | Some("paired")) {
+                return Err(Fail(format!(
+                    "attackResults[{i}] is a substrate row with a missing or out-of-vocabulary attribution"
+                )));
+            }
             let is_caught = caught.iter().any(|c| c == label);
 
             if row.refs.is_empty() {
@@ -1113,6 +1365,220 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
         }
     }
 
+    // ---- 0.7 coverage validity requirements ----------------------------------
+    // Five requirements that hold on the statement, or on every row rather than
+    // only on a `basis: substrate` row. Each is a function of carried bytes and
+    // a violation of any of them makes the attestation invalid.
+    {
+        let kinds: Vec<RecordKind> = records.iter().map(record_kind_of).collect();
+        let is_caught_row = |r: &Row| r.label.is_some_and(|l| caught.iter().any(|c| c == l));
+        let is_clean_row = |r: &Row| {
+            r.label
+                .is_some_and(|l| labels.iter().any(|x| x == l) && !caught.iter().any(|c| c == l))
+        };
+
+        // (1) A clean row resolves no index to an interception record: a row
+        // stating that nothing was caught while pointing at a record in which
+        // the substrate signed that it intercepted traffic states both halves
+        // of a contradiction.
+        for (i, row) in rows.iter().enumerate() {
+            if !is_clean_row(row) {
+                continue;
+            }
+            for &r in &row.refs {
+                if kinds.get(r as usize) == Some(&RecordKind::Interception) {
+                    return Err(Fail(format!(
+                        "attackResults[{i}] is a clean row resolving observationRefs index {r} to an interception record"
+                    )));
+                }
+            }
+        }
+
+        // (2) Every carried interception record is resolved by at least one
+        // index on a caught row. One record MAY be resolved by more than one
+        // row, so this costs none of the sharing the document permits.
+        let mut resolved_by_caught: Vec<bool> = vec![false; records.len()];
+        for row in rows.iter().filter(|r| is_caught_row(r)) {
+            for &r in &row.refs {
+                if let Some(slot) = resolved_by_caught.get_mut(r as usize) {
+                    *slot = true;
+                }
+            }
+        }
+        for (idx, k) in kinds.iter().enumerate() {
+            if *k == RecordKind::Interception && !resolved_by_caught[idx] {
+                return Err(Fail(format!(
+                    "observationRecords[{idx}] is an interception record no caught row resolves"
+                )));
+            }
+        }
+
+        // (3) and (4). A statement carrying a substrate row carries at least one
+        // sealed record satisfying every constraint of its kind, whether or not
+        // any row resolves an index to it; and every carried sealed record's
+        // aeeObservedSet equals the recompute. A rule conditioned on the
+        // presence of the record it constrains is a rule a producer switches
+        // off by omission, so this ranges over the carried array.
+        if substrate_carrying {
+            let ctx = Ctx {
+                run_binding: run_binding.as_deref().unwrap(),
+                posture_digest,
+                issued_at,
+                manifest_attacks: &manifest_attack_ids,
+                observed_set: &observed_set,
+            };
+            let mut valid_sealed = 0usize;
+            for (idx, k) in kinds.iter().enumerate() {
+                if *k != RecordKind::Sealed {
+                    continue;
+                }
+                // Requirement 3 is EXISTENTIAL ("carries at least one sealed
+                // record that satisfies every constraint of its kind"), so a
+                // second sealed record failing a kind constraint does not by
+                // itself invalidate the statement. Requirement 4 is UNIVERSAL
+                // ("aeeObservedSet on every carried sealed record equals the
+                // value recomputed"), so that one is checked here over every
+                // carried seal regardless of whether another satisfies its kind.
+                if let Some(pl) = records[idx].payload.as_ref() {
+                    match pl.get("aeeObservedSet").and_then(|v| v.as_str()) {
+                        Some(v) if v == observed_set => {}
+                        Some(_) => {
+                            return Err(Fail(format!(
+                                "observationRecords[{idx}] is a sealed record whose aeeObservedSet does not equal the recompute over the carried records"
+                            )))
+                        }
+                        None => {
+                            return Err(Fail(format!(
+                                "observationRecords[{idx}] is a sealed record carrying no aeeObservedSet"
+                            )))
+                        }
+                    }
+                }
+                let ce = referenced_record_validity(&records[idx], idx, &ctx)?;
+                if ce.non_covering.is_none() {
+                    valid_sealed += 1;
+                }
+            }
+            if valid_sealed == 0 {
+                return Err(Fail(
+                    "statement carries a basis: substrate row but no sealed record satisfying its kind".into(),
+                ));
+            }
+
+            // Statement-level obligations carried by the two run-level records.
+            //
+            // aeeObservedAttacks READS IN ONE DIRECTION ONLY. Spec: "For every
+            // identifier in the array the statement MUST carry an attackResults
+            // row with that attackId whose containmentObserved is in the carried
+            // caught set", and "a seal naming an attack obliges a caught row for
+            // that attack; a seal omitting one licenses nothing, and in
+            // particular does not oblige a clean row." So the array is a lower
+            // bound: a caught row for an attack the seal omits is conformant,
+            // and reading the relation as equality would reject it.
+            for (idx, k) in kinds.iter().enumerate() {
+                if *k != RecordKind::Sealed {
+                    continue;
+                }
+                let payload = match records[idx].payload.as_ref() {
+                    Some(p) => p,
+                    None => continue,
+                };
+                if let Some(arr) = payload.get("aeeObservedAttacks").and_then(|v| v.as_array()) {
+                    for e in arr {
+                        let Some(attack) = e.as_str() else { continue };
+                        let obliged = rows.iter().any(|r| {
+                            r.attack_id == attack
+                                && r.label.is_some_and(|l| caught.iter().any(|c| c == l))
+                        });
+                        if !obliged {
+                            return Err(Fail(format!(
+                                "sealed record aeeObservedAttacks names {attack:?} but the statement carries no caught row for it"
+                            )));
+                        }
+                    }
+                }
+            }
+
+            // The union of the manifest's identifiers for the carried
+            // assessedClasses MUST be a subset of aeeAssessedAttacks. A subset
+            // rather than an equality, so a run that loses coverage part-way can
+            // still disclose the loss.
+            for (idx, k) in kinds.iter().enumerate() {
+                if *k != RecordKind::Arming {
+                    continue;
+                }
+                let payload = match records[idx].payload.as_ref() {
+                    Some(p) => p,
+                    None => continue,
+                };
+                let declared: Vec<&str> = payload
+                    .get("aeeAssessedAttacks")
+                    .and_then(|v| v.as_array())
+                    .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
+                    .unwrap_or_default();
+                for class in &assessed {
+                    for (c, attack) in &manifest_attacks {
+                        if c == class && !declared.iter().any(|d| d == attack) {
+                            return Err(Fail(format!(
+                                "coverage.assessedClasses names {class:?} but the arming record's aeeAssessedAttacks omits its attackId {attack:?}"
+                            )));
+                        }
+                    }
+                }
+            }
+        }
+
+        // (5) A row declaring `attribution: pinned` resolves at least one index
+        // to an interception record, its attackId carries an entry in
+        // expectedPayloads, and every interception record it resolves carries
+        // at least one value from that entry. The existence requirement is not
+        // redundant beside the third: a requirement universally quantified over
+        // an empty set is vacuously true.
+        for (i, row) in rows.iter().enumerate() {
+            if row.attribution != Some("pinned") {
+                continue;
+            }
+            let entry = expected_payloads
+                .iter()
+                .find(|(a, _)| a == row.attack_id)
+                .map(|(_, v)| v)
+                .ok_or_else(|| {
+                    Fail(format!(
+                        "attackResults[{i}] declares attribution pinned but its attackId carries no expectedPayloads entry"
+                    ))
+                })?;
+            let mut resolved_interception = false;
+            for &r in &row.refs {
+                let idx = r as usize;
+                if kinds.get(idx) != Some(&RecordKind::Interception) {
+                    continue;
+                }
+                resolved_interception = true;
+                let commitments = records[idx]
+                    .payload
+                    .as_ref()
+                    .and_then(|pl| pl.get("aeePayloadCommitment"))
+                    .and_then(|v| v.as_array())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|x| x.as_str().map(str::to_string))
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                if !commitments.iter().any(|c| entry.iter().any(|e| e == c)) {
+                    return Err(Fail(format!(
+                        "attackResults[{i}] declares attribution pinned but observationRecords[{idx}] carries no commitment the corpus declared for this attack"
+                    )));
+                }
+            }
+            if !resolved_interception {
+                return Err(Fail(format!(
+                    "attackResults[{i}] declares attribution pinned but resolves no interception record"
+                )));
+            }
+        }
+    }
+
     // ---- result recompute ------------------------------------------------------
     let mut any_fail = false;
     for row in &rows {
@@ -1122,14 +1588,32 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
         };
         let basis_fail = !matches!(row.basis, Some("substrate") | Some("artifact"));
         let method_fail = !matches!(row.method, Some("intercepted") | Some("reconstructed"));
-        if label_fail || basis_fail || method_fail {
+        // Spec: "`attribution` enters the recompute through the fail-closed arm
+        // of the first condition and nowhere else." A `paired` row is not a
+        // weaker result, so the value never moves the token by itself.
+        let attribution_fail = !matches!(row.attribution, Some("pinned") | Some("paired"));
+        if label_fail || basis_fail || method_fail || attribution_fail {
             any_fail = true;
         }
     }
+    // Third condition: any CLEAN row (label in the carried labels and not in the
+    // carried caught set) carrying a basis other than `substrate` or a method
+    // other than `intercepted` contributes `pass_indirect`. The result is the
+    // minimum under fail < degraded < pass_indirect < pass, evaluated as three
+    // independent conditions rather than as a cascade, because worst-wins rather
+    // than evaluation order is the rule.
+    let any_indirect_clean = rows.iter().any(|row| {
+        let clean = row
+            .label
+            .is_some_and(|l| labels.iter().any(|x| x == l) && !caught.iter().any(|c| c == l));
+        clean && (row.basis != Some("substrate") || row.method != Some("intercepted"))
+    });
     let recomputed = if any_fail {
         "fail"
     } else if !out_of_scope.is_empty() || !routed_elsewhere.is_empty() {
         "degraded"
+    } else if any_indirect_clean {
+        "pass_indirect"
     } else {
         "pass"
     };
