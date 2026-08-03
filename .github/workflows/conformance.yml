@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 env:
-  SUITE_COMMIT: 84ba22718e5b2e0e0b04e3a1b8c6dbbe9e3b1f6a
+  SUITE_COMMIT: 84ba227155f55b653deed5051027f9aecdd2159f
   SPEC_DIGEST: 94de8da54af6a2fe4c897f606ca22bfd054f4238b3c85db031ddc703516331b5
 
 jobs:
