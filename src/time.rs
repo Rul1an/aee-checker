@@ -10,6 +10,11 @@ pub struct Instant {
 }
 
 pub struct Parsed {
+    /// The statement-wide timestamp profile: an uppercase `T` separator, an
+    /// uppercase `Z` designator where one is used, and a zone of `Z`, `+00:00`
+    /// or `-00:00`. RFC 3339 also admits the lowercase forms and non-zero
+    /// offsets; this predicate does not.
+    pub profile_ok: bool,
     pub instant: Instant,
     /// True when the offset was `Z`, `z`, `+00:00`, or `-00:00`.
     pub utc_offset: bool,
@@ -113,8 +118,11 @@ pub fn parse_rfc3339(s: &str) -> Option<Parsed> {
         }
         nanos = ns;
     }
+    let upper_sep = b.get(10) == Some(&b'T');
+    let mut upper_zone = true;
     let (offset_seconds, utc_offset) = match b.get(pos) {
         Some(b'Z') | Some(b'z') => {
+            upper_zone = b[pos] == b'Z';
             pos += 1;
             (0i64, true)
         }
@@ -144,6 +152,7 @@ pub fn parse_rfc3339(s: &str) -> Option<Parsed> {
             nanos,
         },
         utc_offset,
+        profile_ok: upper_sep && upper_zone && utc_offset,
     })
 }
 

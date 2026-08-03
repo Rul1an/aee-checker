@@ -26,6 +26,13 @@ struct Expected {
     result: Option<String>,
     tier_with_key: Option<Vec<String>>,
     tier_without_key: Option<Vec<String>>,
+    /// The condition codes the corpus declares this vector forces. Carried so a
+    /// reject can be scored on the reason it names and not only on its verdict:
+    /// verdict-only scoring lets a right-verdict-wrong-reason reject read as
+    /// parity, which is the divergence class worth reporting.
+    codes: Vec<String>,
+    /// Codes a conforming verifier MAY additionally name on this vector.
+    also_carries: Vec<String>,
 }
 
 fn str_list(v: &Value) -> Option<Vec<String>> {
@@ -58,6 +65,8 @@ fn load_manifest(path: &Path) -> Vec<Expected> {
                 .map(str::to_string),
             tier_with_key: expected.get("tierWithPinnedKey").and_then(str_list),
             tier_without_key: expected.get("tierWithoutKey").and_then(str_list),
+            codes: expected.get("codes").and_then(str_list).unwrap_or_default(),
+            also_carries: expected.get("alsoCarries").and_then(str_list).unwrap_or_default(),
         });
     }
     out
@@ -163,6 +172,8 @@ fn main() {
     let mut accept_match = 0;
     let mut reject_total = 0;
     let mut reject_match = 0;
+    let mut ind_total = 0;
+    let mut ind_match = 0;
     let mut mismatches: Vec<String> = Vec::new();
 
     for exp in &expectations {
@@ -196,15 +207,28 @@ fn main() {
                 ok = ok && et == gt;
             }
         }
-        if exp.kind == "accept" {
-            accept_total += 1;
-            if ok {
-                accept_match += 1;
+        // The corpus declares three dispositions, not two. Folding
+        // `indeterminate` into the rejects reports a fraction of a corpus that
+        // does not exist, which is exactly what the suite's own transcription
+        // rule refuses.
+        match exp.kind.as_str() {
+            "accept" => {
+                accept_total += 1;
+                if ok {
+                    accept_match += 1;
+                }
             }
-        } else {
-            reject_total += 1;
-            if ok {
-                reject_match += 1;
+            "indeterminate" => {
+                ind_total += 1;
+                if ok {
+                    ind_match += 1;
+                }
+            }
+            _ => {
+                reject_total += 1;
+                if ok {
+                    reject_match += 1;
+                }
             }
         }
         if !ok {
@@ -256,14 +280,14 @@ fn main() {
 
     println!();
     println!(
-        "parity: accepts {accept_match}/{accept_total}, rejects {reject_match}/{reject_total}"
+        "parity: accepts {accept_match}/{accept_total}, rejects {reject_match}/{reject_total}, indeterminate {ind_match}/{ind_total}"
     );
     for m in &mismatches {
         println!("{m}");
     }
     if let Some(out) = json_out {
         let report = format!(
-            "{{\"suite\":\"aee-conformance\",\"acceptParity\":\"{accept_match}/{accept_total}\",\"rejectParity\":\"{reject_match}/{reject_total}\",\"vectors\":[\n{}\n]}}\n",
+            "{{\"suite\":\"aee-conformance\",\"acceptParity\":\"{accept_match}/{accept_total}\",\"rejectParity\":\"{reject_match}/{reject_total}\",\"indeterminateParity\":\"{ind_match}/{ind_total}\",\"vectors\":[\n{}\n]}}\n",
             lines_json.join(",\n")
         );
         std::fs::write(&out, report).expect("cannot write JSON report");

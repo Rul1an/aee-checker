@@ -178,9 +178,49 @@ def test_changed_checker_source_without_a_regenerated_report_is_refused():
     expect_fail(in_copy(m), "working tree hashes to")
 
 
+def _null_digest(w, record, **extra):
+    p = w / "reports/INDEX.json"
+    d = json.loads(p.read_text())
+    for rec in d["records"]:
+        if rec["file"] == record:
+            rec["checkerSourceDigest"] = None
+            rec.pop("checkerCommit", None)
+            rec.update(extra)
+    p.write_text(json.dumps(d, indent=1))
+
+
+def test_null_digest_requires_the_sibling_field():
+    """A note is prose anything satisfies. Claiming a build is unrecoverable is a
+    specific claim, so it gets its own field and cannot ride on a one-word note."""
+    def m(w):
+        _null_digest(w, "suite-revision-1.json", note="x")
+    expect_fail(in_copy(m), "without a sourceUnrecoverable field")
+
+
+def test_null_digest_refused_beside_a_named_commit():
+    """A named commit is a recoverable build by definition, so a null there is a
+    contradiction rather than a disclosure, and must not crash the validator."""
+    def m(w):
+        _null_digest(
+            w,
+            "suite-revision-1.json",
+            sourceUnrecoverable="claimed",
+            checkerCommit="47dbaf1" + "0" * 33,
+        )
+    expect_fail(in_copy(m), "names checkerCommit")
+
+
+def test_null_digest_accepted_with_the_sibling_field():
+    def m(w):
+        _null_digest(w, "suite-revision-1.json", sourceUnrecoverable="never committed on its own")
+    r = in_copy(m)
+    assert "sourceUnrecoverable" not in r.stdout, r.stdout
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):
             fn()
             print(f"ok  {name}")
     print("all index-validator tests passed")
+

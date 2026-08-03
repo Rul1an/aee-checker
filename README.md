@@ -12,6 +12,14 @@ An independent validity-gate checker for the **Adversarial Execution Evidence (A
 
 **suiteRevision 6: 153/153** (36/36, 117/117) after implementing the noncharacter exclusion. The unchanged revision-5 build scored **151/153**. Two of the four new vectors are the depth-boundary pair, `ok-036` and `bad-742`, and the container-branch counter already handled both; the other two, `bad-743` and `bad-744`, carry Unicode noncharacters in a vocabulary label and a payload value, which this checker admitted. It admitted them because the earlier text scoped its MUST to well-formed sequences of Unicode scalar values, and a noncharacter is one; the revision widens the rule to the RFC 7493 section 2.1 exclusion the strict-I-JSON label had always implied. **This one is directed, and more so than revision 2 was:** the rule was written and the vectors named before this checker ran, so what it demonstrates is that the corrected rule is implementable from the text, not that an independent reader found it.
 
+**Predicate v0.7, suiteRevision 22: blind 179/232, directed 232/232.** v0.7 is breaking with no
+alias, so the revision-6 build refuses every v0.7 statement at the type check. The number that bears
+on whether the text is determinate from a cold start is the **blind 179/232** (8/54 accept, 169/176
+reject, 2/2 indeterminate), run under a protocol published before the spec was readable. The
+directed 232/232 followed a spec diff already read and an adversarial review of this implementation,
+and is not evidence about the text. Reason parity is reported separately and is not verdict parity.
+Full record in [`reports/v0.7-RUN.md`](reports/v0.7-RUN.md).
+
 [PARITY-REPORT.md](PARITY-REPORT.md) carries the scores, the interpretation decisions the spec text forced, the four formerly-open corners and how each was closed, and the from-spec discipline attestation listing exactly what was and was not read for each revision. [NOTES.md](NOTES.md) compares the vendored spec against the branch-head spec.
 
 No dependency on the reference implementation: this crate carries its own strict I-JSON parser, RFC 8785 canonicalization with ECMAScript number formatting, RFC 6962 domain-separated Merkle root over DSSE PAE bytes, run-binding derivation, and Ed25519 tier verification against the suite's seed-derived test key.
@@ -22,11 +30,11 @@ No dependency on the reference implementation: this crate carries its own strict
 git clone https://github.com/astrogilda/aee-conformance
 git -C aee-conformance checkout 8959bd3293600c10516894e731ed1ef280a21b5c
 cargo run --locked --release -- aee-conformance/vectors --json fresh.json
-python3 scripts/compare-report.py fresh.json reports/suite-revision-6.json
+python3 scripts/compare-report.py fresh.json reports/v0.7-directed-run.json
 ```
 
 The checkout is pinned deliberately. `main` moves, and a later revision would run
-a different corpus against the 153/153 claim on this page, which is the one thing
+a different corpus against the 232/232 claim on this page, which is the one thing
 a reproduction recipe must not do quietly. Earlier revisions are reproducible the
 same way by taking their suite pin and checker commit from
 [`reports/INDEX.json`](reports/INDEX.json).

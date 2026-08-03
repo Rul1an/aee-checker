@@ -55,7 +55,11 @@ def main() -> int:
             problems.append(
                 f"{rec['file']}: index says {rec['vectors']} vectors, record has {len(report.get('vectors', []))}"
             )
-        for key in ("acceptParity", "rejectParity"):
+        for key in ("acceptParity", "rejectParity", "indeterminateParity"):
+            # indeterminateParity exists only on records made after the corpus
+            # grew a third disposition; older records legitimately omit it.
+            if key not in rec:
+                continue
             if report.get(key) != rec[key]:
                 problems.append(
                     f"{rec['file']}: index says {key}={rec[key]!r}, record says {report.get(key)!r}"
@@ -82,7 +86,34 @@ def main() -> int:
         if not HEX40.match(rec.get("suiteCommit", "")):
             problems.append(f"{rec['file']}: suiteCommit is not a 40-character lowercase hex commit")
         for key in ("reportSha256", "checkerSourceDigest", "specDigest"):
-            if key in rec and not DIGEST.match(rec[key]):
+            if key not in rec:
+                continue
+            # An explicit null is a permitted value for checkerSourceDigest and
+            # for it alone: it records that the build behind a figure is not
+            # recoverable, which is a fact a provenance index must be able to
+            # state. Omitting the key instead would hide the same fact, and
+            # filling it with another build's digest would name the wrong
+            # implementation. A null demands a note saying why.
+            if rec[key] is None:
+                if key != "checkerSourceDigest":
+                    problems.append(f"{rec['file']}: {key} may not be null")
+                elif not rec.get("sourceUnrecoverable"):
+                    # A note is prose anything can satisfy. The claim that a build
+                    # is unrecoverable is a specific one, so it gets its own field
+                    # and a record cannot shed provenance behind a one-word note.
+                    problems.append(
+                        f"{rec['file']}: checkerSourceDigest is null without a "
+                        f"sourceUnrecoverable field recording why"
+                    )
+                elif rec.get("checkerCommit"):
+                    # A named commit is a recoverable build by definition.
+                    problems.append(
+                        f"{rec['file']}: checkerSourceDigest is null but the record "
+                        f"names checkerCommit {rec['checkerCommit']}, from which the "
+                        f"digest is recomputable"
+                    )
+                continue
+            if not DIGEST.match(rec[key]):
                 problems.append(f"{rec['file']}: {key} is not a sha256:<64 hex> digest")
         prior = by_revision.setdefault(
             rec["suiteRevision"], (rec["file"], rec.get("suiteCommit"), rec.get("specDigest"))
@@ -111,6 +142,10 @@ def main() -> int:
                 f"{rec['file']}: checkerCommit {commit[:12]} is not resolvable in this repository "
                 f"(CI needs fetch-depth: 0 for full history)"
             )
+            continue
+        if rec["checkerSourceDigest"] is None:
+            # Already reported above as a null beside a named commit; do not
+            # subscript None here.
             continue
         if recomputed != rec["checkerSourceDigest"]:
             problems.append(
