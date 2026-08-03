@@ -486,7 +486,8 @@ fn check_arming(payload: &Value, ctx: &Ctx) -> R<()> {
         .map_err(Fail)?;
     for a in &assessed {
         if !ctx.manifest_attacks.iter().any(|m| m == a) {
-            return Err(Fail::new("assessed-set-exceeds-declaration", format!(
+            return Err(Fail::new(
+            "arming-covers-nothing", format!(
                 "arming record aeeAssessedAttacks entry {a:?} is not an attackId the carried manifest declares"
             )));
         }
@@ -552,7 +553,8 @@ fn check_arming(payload: &Value, ctx: &Ctx) -> R<()> {
                             Fail::new("arming-covers-nothing", format!("arming record aeeChainScope[{i}] is not a JSON string"))
                         })?;
                         if !matches!(tok, "subject" | "corpus" | "networkPosture") {
-                            return Err(Fail::new("arming-covers-nothing", format!(
+                            return Err(Fail::new(
+            "vocabulary-not-canonical", format!(
                                 "arming record aeeChainScope[{i}] {tok:?} is outside the closed dimension vocabulary"
                             )));
                         }
@@ -709,7 +711,7 @@ fn parse_row<'a>(row: &'a Value, idx: usize) -> R<Row<'a>> {
         None => None,
         Some(v) => Some(
             v.as_str()
-                .ok_or_else(|| Fail::new("malformed-missing-actual-layer", format!("{what}.attribution is not a JSON string")))?,
+                .ok_or_else(|| Fail::new("statement-malformed", format!("{what}.attribution is not a JSON string")))?,
         ),
     };
     // actualLayer is required on every row: a missing member is a
@@ -873,7 +875,8 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
             let units = json::utf16_units(s);
             if let Some(p) = &prev {
                 if *p >= units {
-                    return Err(Fail::new("vocabulary-missing", format!(
+                    return Err(Fail::new(
+            "vocabulary-not-canonical", format!(
                         "observationVocabulary.{name} is not strictly ascending by UTF-16 code unit at index {i}"
                     )));
                 }
@@ -887,7 +890,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
     let caught = check_vocab_array(caught_arr, "caught")?;
     for c in &caught {
         if !labels.contains(c) {
-            return Err(Fail::new("vocabulary-missing", format!(
+            return Err(Fail::new("vocabulary-caught-not-subset", format!(
                 "observationVocabulary.caught entry {c:?} is not in labels"
             )));
         }
@@ -1125,7 +1128,8 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
             if clean {
                 let layer = r.get("actualLayer").and_then(|v| v.as_str()).unwrap_or("");
                 if layer != "none" {
-                    return Err(Fail::new("malformed-missing-actual-layer", format!(
+                    return Err(Fail::new(
+            "clean-row-layer-not-none", format!(
                         "attackResults[{i}] is a clean row but actualLayer is {layer:?}, not the literal \"none\""
                     )));
                 }
@@ -1620,7 +1624,8 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                 .find(|(a, _)| a == row.attack_id)
                 .map(|(_, v)| v)
                 .ok_or_else(|| {
-                    Fail::new("manifest-expected-payloads-malformed", format!(
+                    Fail::new(
+            "attribution-unpinnable", format!(
                         "attackResults[{i}] declares attribution pinned but its attackId carries no expectedPayloads entry"
                     ))
                 })?;

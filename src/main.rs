@@ -222,7 +222,11 @@ fn main() {
         // this vector, counting alsoCarries as the widening set it is. Scored only
         // where the verdict already agrees, since a wrong verdict makes the
         // condition question moot.
-        if !exp.codes.is_empty() {
+        // Scored only where the verdict already agrees: a wrong verdict makes the
+        // condition question moot, and counting it would put a row in the
+        // denominator that the numerator can never reach. Rows whose verdict
+        // diverges are reported by the verdict parity above, not hidden here.
+        if !exp.codes.is_empty() && ok {
             reason_total += 1;
             if ok
                 && got_code.is_some_and(|c| {
