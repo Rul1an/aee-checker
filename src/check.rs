@@ -915,7 +915,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
         let obj = ep.as_object().ok_or_else(|| {
             Fail("corpus.manifest.expectedPayloads is not a JSON object".into())
         })?;
-        for (attack, vals) in obj {
+        for (attack, _vals) in obj {
             if !manifest_attacks.iter().any(|(_, a)| a == attack) {
                 return Err(Fail(format!(
                     "corpus.manifest.expectedPayloads key {attack:?} is not an attackId the manifest declares"
@@ -933,8 +933,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                     "corpus.manifest.expectedPayloads[{attack:?}] is empty"
                 )));
             }
-            let _ = vals;
-            expected_payloads.push((attack.clone(), entries));
+                    expected_payloads.push((attack.clone(), entries));
         }
     }
 

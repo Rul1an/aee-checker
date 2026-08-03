@@ -18,9 +18,26 @@ construction and is reported as such, never as a measured reason parity.
 Inputs are both published: reports/v0.7-directed-run.json and the corpus
 MANIFEST.json at the pinned commit.
 """
-import json,re,collections
-man={v['id']:v for v in json.load(open('corpus/vectors/MANIFEST.json'))['vectors']}
-run=json.load(open('checker/reports/v0.7-directed-run.json'))['vectors']
+import collections
+import json
+import os
+import re
+import sys
+
+# Defaults follow the README's reproduction flow: the suite cloned beside this
+# repository, the run record under reports/. Both are overridable so the script
+# runs from any layout rather than only the one it was written in.
+SUITE = os.environ.get("AEE_CONFORMANCE_DIR", "aee-conformance")
+RUN = os.environ.get("AEE_RUN_REPORT", "reports/v0.7-directed-run.json")
+manifest_path = os.path.join(SUITE, "vectors", "MANIFEST.json")
+for path in (manifest_path, RUN):
+    if not os.path.exists(path):
+        sys.exit(
+            f"{path} not found. Clone the suite at the pinned commit and run from the "
+            f"repository root, or set AEE_CONFORMANCE_DIR and AEE_RUN_REPORT."
+        )
+man={v['id']:v for v in json.load(open(manifest_path))['vectors']}
+run=json.load(open(RUN))['vectors']
 norm=lambda s: re.sub(r'\[\d+\]','[i]',s or '')
 pairs=[]
 for v in run:
