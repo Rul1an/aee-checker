@@ -39,7 +39,17 @@ a reproduction recipe must not do quietly. Earlier revisions are reproducible th
 same way by taking their suite pin and checker commit from
 [`reports/INDEX.json`](reports/INDEX.json).
 
-Exit code 0 on full parity, 1 on any mismatch. Reject reasons are free-form and this implementation's own; the suite's informative condition codes were never read. `--role <name>` overrides the pinned test-key role, and `--discover-role <vector.json>` re-runs the role probe against a vector's signatures.
+Exit code 0 on full parity, 1 on any mismatch. Reject reasons are this implementation's own prose. **The condition codes are not independent of the suite's, and this sentence used to say they were.**
+
+The sentence was written on 2026-07-24, when this checker emitted no condition codes at all, and it was true then. It went stale on 2026-08-03, when #8 introduced 23 codes -- all 23 appear verbatim in the corpus manifest's `expected.codes` vocabulary, and every one of them existed in the corpus between 3 and 13 days earlier, so the names came from the suite rather than the other way round. That origin was not concealed: #8's own commit message says the runner "scores reason parity directly against the corpus's declared codes", and `PROTOCOL-v0.7.md` rule 5 permits reading the corpus once the blind number is published, which #7 had already done. What was wrong is that #10 restated the sentence on 2026-08-08 as though it still held.
+
+For contrast, of the 15 codes added in #10 -- derived from this checker's own reason strings -- 2 appear in that vocabulary, against a set of conditions the corpus names in all 15 cases. So roughly 13% is what independently naming the same conditions looks like here, and 23 of 23 is not that.
+
+None of the 23 appears in the pinned spec text, verified against the digest `spec/VENDOR-PIN.json` names. Several do appear in `vectors/CHANGES.md` and in vector filenames, both of which this repository discloses reading, so a disclosed adjacent source explains part of the match and not all of it.
+
+A reason-parity figure computed against that vocabulary therefore measures how completely the naming was aligned, not whether the same condition was identified independently, and no such figure is published on that basis.
+
+`--role <name>` overrides the pinned test-key role, and `--discover-role <vector.json>` re-runs the role probe against a vector's signatures.
 
 ## What this is not
 

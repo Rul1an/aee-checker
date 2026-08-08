@@ -78,7 +78,7 @@ fn jcs_sha256_hex(v: &Value) -> R<String> {
 
 fn req<'a>(obj: &'a Value, key: &str, what: &str) -> R<&'a Value> {
     obj.get(key)
-        .ok_or_else(|| Fail(format!("{what} is missing required member \"{key}\"")))
+        .ok_or_else(|| Fail::new("required-member-absent", format!("{what} is missing required member \"{key}\"")))
 }
 
 fn req_str<'a>(obj: &'a Value, key: &str, what: &str) -> R<&'a str> {
@@ -820,7 +820,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
     // a zone of Z, +00:00 or -00:00. Restating half of it on one field is what
     // let a statement be conformant here and off-guideline at the same time.
     if !issued_at_parsed.profile_ok {
-        return Err(Fail(
+        return Err(Fail::new("issued-at-outside-profile", 
             "issuedAt is RFC 3339 but outside this predicate's timestamp profile".into(),
         ));
     }
@@ -971,7 +971,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
     // because an empty classes object and a named class with an empty array are
     // the same defect.
     if manifest_attacks.is_empty() {
-        return Err(Fail(
+        return Err(Fail::new("manifest-declares-no-attack", 
             "corpus.manifest declares no attack identifier across its classes".into(),
         ));
     }
@@ -1142,7 +1142,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
     // malformed, regardless of whether any row is `basis: substrate`." Only the six
     // binding-digest inputs stay substrate-scoped.
     if subjects.len() != 1 {
-        return Err(Fail(format!(
+        return Err(Fail::new("subject-cardinality", format!(
             "statement carries {} subjects; exactly one is required on a statement of any basis",
             subjects.len()
         )));
@@ -1203,7 +1203,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
         let leaves: Vec<[u8; 32]> = records.iter().map(|r| r.leaf).collect();
         let root = merkle::root_over_leaves(&leaves).unwrap();
         if hex::encode(root) != carried {
-            return Err(Fail(
+            return Err(Fail::new("batch-root-mismatch", 
                 "batchRoot does not recompute over the carried observation records".into(),
             ));
         }
@@ -1348,7 +1348,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                 ))
             })?;
             if !labels.iter().any(|l| l == label) {
-                return Err(Fail(format!(
+                return Err(Fail::new("substrate-row-label-unknown", format!(
                     "attackResults[{i}] is a substrate row whose label {label:?} is outside the carried vocabulary"
                 )));
             }
@@ -1356,7 +1356,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                 .method
                 .and_then(parse_method)
                 .ok_or_else(|| {
-                    Fail(format!(
+                    Fail::new("substrate-row-method-invalid", format!(
                         "attackResults[{i}] is a substrate row with a missing or out-of-vocabulary method"
                     ))
                 })?;
@@ -1364,7 +1364,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
             // `method`, so a substrate row fail-closed on it cannot satisfy the
             // class-match requirement either and the statement is invalid.
             if !matches!(row.attribution, Some("pinned") | Some("paired")) {
-                return Err(Fail(format!(
+                return Err(Fail::new("substrate-row-attribution-invalid", format!(
                     "attackResults[{i}] is a substrate row with a missing or out-of-vocabulary attribution"
                 )));
             }
@@ -1412,23 +1412,23 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
             match (is_caught, method) {
                 (true, Method::Intercepted) => {
                     if !has(RecordKind::Interception) {
-                        return Err(Fail(because(format!("attackResults[{i}] is a caught intercepted row with no covering interception record"))));
+                        return Err(Fail::new("row-uncovered-interception", because(format!("attackResults[{i}] is a caught intercepted row with no covering interception record"))));
                     }
                 }
                 (_, Method::Reconstructed) => {
                     if !has(RecordKind::Examination) {
-                        return Err(Fail(because(format!("attackResults[{i}] is a reconstructed row with no covering examination record"))));
+                        return Err(Fail::new("row-uncovered-examination", because(format!("attackResults[{i}] is a reconstructed row with no covering examination record"))));
                     }
                 }
                 (false, Method::Intercepted) => {
                     if !has(RecordKind::Arming) {
-                        return Err(Fail(because(format!("attackResults[{i}] is a clean intercepted row with no covering arming record"))));
+                        return Err(Fail::new("row-uncovered-arming", because(format!("attackResults[{i}] is a clean intercepted row with no covering arming record"))));
                     }
                     let sealed_ok = covering_kinds
                         .iter()
                         .any(|(k, _, clean)| *k == RecordKind::Sealed && *clean);
                     if !sealed_ok {
-                        return Err(Fail(because(format!("attackResults[{i}] is a clean intercepted row with no covering sealed record"))));
+                        return Err(Fail::new("row-uncovered-sealed", because(format!("attackResults[{i}] is a clean intercepted row with no covering sealed record"))));
                     }
                 }
             }
@@ -1438,7 +1438,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                 .iter()
                 .any(|(_, m, _)| *m == Some(Method::Reconstructed));
             if method == Method::Intercepted && weakest_is_reconstructed {
-                return Err(Fail(format!(
+                return Err(Fail::new("row-method-exceeds-coverage", format!(
                     "attackResults[{i}] claims method intercepted but a covering record is signed aeeMethod reconstructed"
                 )));
             }
@@ -1541,7 +1541,8 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                 }
             }
             if valid_sealed == 0 {
-                return Err(Fail(
+                return Err(Fail::new(
+                    "sealed-record-absent",
                     "statement carries a basis: substrate row but no sealed record satisfying its kind".into(),
                 ));
             }
@@ -1648,13 +1649,13 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                     })
                     .unwrap_or_default();
                 if !commitments.iter().any(|c| entry.iter().any(|e| e == c)) {
-                    return Err(Fail(format!(
+                    return Err(Fail::new("attribution-commitment-absent", format!(
                         "attackResults[{i}] declares attribution pinned but observationRecords[{idx}] carries no commitment the corpus declared for this attack"
                     )));
                 }
             }
             if !resolved_interception {
-                return Err(Fail(format!(
+                return Err(Fail::new("attribution-unresolved", format!(
                     "attackResults[{i}] declares attribution pinned but resolves no interception record"
                 )));
             }
