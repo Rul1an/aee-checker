@@ -4,9 +4,11 @@
 //!   aee-checker <vectors-dir> [--manifest <path>] [--json <out.json>] [--role <name>]
 //!   aee-checker --discover-role <vector.json>
 //!
-//! The runner reads MANIFEST.json for the vector list and expected
-//! verdict/result/tier values only; the manifest's informative condition
-//! codes are never read by this program.
+//! The runner reads MANIFEST.json for the vector list, the expected
+//! verdict/result/tier values, and -- since #8 -- the informative condition
+//! codes, which it scores reason parity against. This comment said the codes
+//! were never read; that was true until #8 and is the same claim the README
+//! retracts, left standing in the file that does the reading.
 
 mod check;
 mod json;

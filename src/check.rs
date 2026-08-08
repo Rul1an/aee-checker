@@ -1541,7 +1541,8 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                 }
             }
             if valid_sealed == 0 {
-                return Err(Fail::new("attribution-commitment-absent", 
+                return Err(Fail::new(
+                    "sealed-record-absent",
                     "statement carries a basis: substrate row but no sealed record satisfying its kind".into(),
                 ));
             }

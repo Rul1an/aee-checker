@@ -100,8 +100,8 @@
     },
     {
       "file": "v0.7-directed-run.json",
-      "reportSha256": "sha256:544952f1a8d50045a572898f75f1a10c3b9290970aa67cddcf8a9a6af3cc6db5",
-      "checkerSourceDigest": "sha256:3cf9dbe6dc7d7fed3b30bcc79f5cf48990e1a2f5762dc0b9bffb630efed75eaa",
+      "reportSha256": "sha256:a1e9fa0f32342d6b584aba8c1778d847604dbe6e4f4b9d70d4b90920ee0567a8",
+      "checkerSourceDigest": "sha256:ec1fc2edfce4677b6428b83c21169a40625f7322d0bf833fa8b2453b61a79540",
       "suiteRevision": 22,
       "suiteCommit": "84ba227155f55b653deed5051027f9aecdd2159f",
       "specDigest": "sha256:94de8da54af6a2fe4c897f606ca22bfd054f4238b3c85db031ddc703516331b5",
@@ -110,8 +110,7 @@
       "rejectParity": "176/176",
       "indeterminateParity": "2/2",
       "continuouslyVerified": true,
-      "note": "Directed: followed a spec diff already read, and for bad-902 an adversarial review of this implementation. Reproduces exactly from the working tree. Carries per-vector condition codes from this revision; reasonParity is a comparison against the corpus's declared codes rather than a prose mapping.",
-      "reasonParity": "60/176"
+      "note": "Directed: followed a spec diff already read, and for bad-902 an adversarial review of this implementation. Reproduces exactly from the working tree. Carries per-vector condition codes from this revision. No reasonParity is published here: the codes introduced in #8 were taken from the corpus's own vocabulary, so a figure scored against that vocabulary measures how completely the naming was aligned rather than whether the condition was identified independently. See README."
     }
   ]
 }
