@@ -39,7 +39,7 @@ a reproduction recipe must not do quietly. Earlier revisions are reproducible th
 same way by taking their suite pin and checker commit from
 [`reports/INDEX.json`](reports/INDEX.json).
 
-Exit code 0 on full parity, 1 on any mismatch. Reject reasons are free-form and this implementation's own; the suite's informative condition codes were never read. `--role <name>` overrides the pinned test-key role, and `--discover-role <vector.json>` re-runs the role probe against a vector's signatures.
+Exit code 0 on full parity, 1 on any mismatch. Reject reasons are this implementation's own prose. **The condition codes are not independent of the suite's, and an earlier version of this sentence said they were.** Measured: all 22 codes introduced in #8 appear verbatim in the corpus manifest's `expected.codes` vocabulary, while 2 of the 15 added in #10 -- derived from this checker's own reason strings without reading that vocabulary -- do. None of the names appears anywhere in the spec text, so a common source does not explain the match. A reason-parity figure computed against that vocabulary therefore measures how completely the naming was aligned, not how independently the same condition was identified, and no such figure is published on that basis. `--role <name>` overrides the pinned test-key role, and `--discover-role <vector.json>` re-runs the role probe against a vector's signatures. `--role <name>` overrides the pinned test-key role, and `--discover-role <vector.json>` re-runs the role probe against a vector's signatures.
 
 ## What this is not
 
