@@ -1547,6 +1547,90 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                 ));
             }
 
+            // The universal partner of the requirement above. Spec: "every
+            // carried record that binds to this run and whose payload
+            // `aeeKind` names a covering kind -- `interception`, `arming`,
+            // `sealed`, `examination` -- satisfies every constraint of that
+            // kind, whether or not any row resolves an `observationRefs` index
+            // to it." The rationale the text gives is the reason this cannot
+            // be left to the referenced path: "A constraint evaluated only
+            // where a row points is a constraint whose subject the producer
+            // chooses: a substrate signs a `sealed` record reporting its moat
+            // down, the producer carries that record and points the row at a
+            // second seal, and the run reads clean with the record that says
+            // otherwise sitting in the statement and inside `batchRoot`."
+            //
+            // Two scope limits, both taken from the sentence rather than
+            // chosen. "that binds to this run" is a FILTER and not a
+            // constraint: a carried record whose `aeeRunBinding` names another
+            // run is outside this rule, not in violation of it, so it is
+            // skipped rather than refused. And the kinds registered as
+            // covering nothing and the kinds a verifier does not recognize are
+            // unaffected, "since neither carries a constraint that could be
+            // violated", so the match below lists the four covering kinds
+            // explicitly instead of negating `CoversNothing` and `Unknown`.
+            //
+            // Placement: the bullet sits in the list that holds "on the
+            // statement, or on every row rather than only on a `basis:
+            // substrate` row", so it is not conditioned on a substrate row.
+            // It is evaluated here because `run_binding` is derived only on
+            // the substrate path, and without a derived binding no carried
+            // record binds to this run and the rule is vacuous. If a later
+            // revision derives a run binding without a substrate row, this
+            // sweep moves out with it.
+            for (idx, k) in kinds.iter().enumerate() {
+                if !matches!(
+                    k,
+                    RecordKind::Interception
+                        | RecordKind::Arming
+                        | RecordKind::Sealed
+                        | RecordKind::Examination
+                ) {
+                    continue;
+                }
+                let binds = records[idx]
+                    .payload
+                    .as_ref()
+                    .and_then(|p| p.get("aeeRunBinding"))
+                    .and_then(|v| v.as_str())
+                    == Some(ctx.run_binding);
+                if !binds {
+                    continue;
+                }
+                let ce = referenced_record_validity(&records[idx], idx, &ctx)?;
+                if let Some(why) = ce.non_covering {
+                    return Err(Fail::new("carried-record-invalid", format!(
+                        "observationRecords[{idx}] binds to this run and its aeeKind names a covering kind, but it does not satisfy every constraint of that kind: {why}"
+                    )));
+                }
+                // For a `sealed` record the clean-row conjuncts are part of
+                // "every constraint of that kind" here, and the text settles
+                // this rather than leaving it to taste: the attack the bullet
+                // exists to close is "a substrate signs a `sealed` record
+                // reporting its moat down, the producer carries that record
+                // and points the row at a second seal, and the run reads clean
+                // with the record that says otherwise sitting in the
+                // statement." A moat reported down IS the conjunction below
+                // failing: `aeeStillArmed` false, drops with no bound or over
+                // it, or a posture digest disagreeing with the pinned value or
+                // with an arming record. Reading the sweep to cover only the
+                // structural constraints would leave exactly the statement the
+                // rationale describes valid, which reads the rule out of the
+                // document.
+                //
+                // Deliberately not applied to the existential requirement
+                // above: that bullet asks whether a valid `sealed` record is
+                // PRESENT and this one asks whether an invalid one is, which
+                // is how the text distinguishes them, so a run whose seal
+                // legitimately covers no clean row is refused here on the
+                // conjunct it actually violates rather than on absence.
+                if ce.kind == RecordKind::Sealed && !ce.sealed_covers_clean {
+                    return Err(Fail::new("carried-record-invalid", format!(
+                        "observationRecords[{idx}] is a sealed record binding to this run whose clean-row conjuncts do not hold: aeeStillArmed, the drop count against its bound, and aeePostureDigest against both the pinned networkPosture digest and every carried arming record"
+                    )));
+                }
+            }
+
             // Statement-level obligations carried by the two run-level records.
             //
             // aeeObservedAttacks READS IN ONE DIRECTION ONLY. Spec: "For every
