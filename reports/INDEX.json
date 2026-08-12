@@ -142,9 +142,9 @@
       "indeterminateParity": "2/2",
       "reasonParity": "69/193",
       "reportSha256": "sha256:536432f8e439c8fcf95e72d7b651a60b5d85d6ed04d5ec61a532caf420ef6b1e",
-      "checkerCommit": "8d4dec479b8b3e52723cff5bb874105043c5a061",
+      "checkerCommit": "91b924bf8f4de881ffafd86b1b9717318ca6b2b6",
       "checkerCommitNote": "Placeholder until this branch squash-merges; repoint to the commit on main, per the trap the revision-25 entry records: a pre-merge SHA still answers the GitHub API and looks fine to anyone checking it that way, while not being reachable from a fresh clone.",
-      "checkerSourceDigest": "sha256:d1915816b774d8e92d10664668b261ff8f4cf15cfb3ec731927e0a0450efc1f0",
+      "checkerSourceDigest": "sha256:e0d8ffae8c5a2ca0804ebd27069004ec6d69698fced2debe3fc275b0f0d0af22",
       "continuouslyVerified": true,
       "note": "Directed. Reads the clean-row conjuncts into the existential bullet as well as its universal partner, on the author's ruling that both say 'every constraint of its kind' and differ in quantifier rather than in constraint set. The asymmetry it replaces was outcome-free on revision 25: 0 of 248 vectors could discriminate the two readings, because every dirty seal there was paired with a clean witness. bad-1017 is cut to discriminate it. Positive control on the mutated line: reverting the condition moves exactly one vector and reason parity 69 -> 68. Re-bound after the per-row arming-scope fix: the run is byte-identical, 0 of 250 vectors differing, so only the source digest moved.",
       "reasonParityNote": "Up one from 68, with the denominator grown by one. The gain is bad-1017 alone, where sealed-record-absent is now reached; the carried-record-invalid family is unchanged and still collapses three kind-keyed names the corpus distinguishes."
