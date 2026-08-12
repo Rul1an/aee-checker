@@ -1536,7 +1536,21 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                     }
                 }
                 let ce = referenced_record_validity(&records[idx], idx, &ctx)?;
-                if ce.non_covering.is_none() {
+                // 0.7 rev 26: the existential bullet and its universal partner both say
+                // "every constraint of its kind", and the author has ruled that for a
+                // `sealed` record those include the clean-row conjuncts, not only the
+                // structural members. So a record reporting its moat down is not a
+                // witness here either: the two bullets differ in quantifier, never in
+                // constraint set.
+                //
+                // The asymmetry this replaces was outcome-free on revision 25 and could
+                // not have been caught by running it. Every dirty seal in that corpus was
+                // paired with a clean one, so both readings were satisfied by the clean
+                // witness and the sweep refused the dirty record either way: 0 of 248
+                // vectors discriminated. `bad-1017` is the vector cut to discriminate it,
+                // and it grades the condition rather than the verdict, which stays invalid
+                // under both readings.
+                if ce.non_covering.is_none() && ce.sealed_covers_clean {
                     valid_sealed += 1;
                 }
             }

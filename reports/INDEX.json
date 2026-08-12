@@ -125,11 +125,29 @@
       "acceptParity": "54/54",
       "rejectParity": "192/192",
       "indeterminateParity": "2/2",
-      "continuouslyVerified": true,
+      "continuouslyVerified": false,
       "note": "Directed. Implements the universal partner in the coverage-validity list of spec 237f83b9: every carried record binding to this run whose aeeKind names a covering kind satisfies every constraint of that kind. The prior build scored 234 of 248 on this same pin, missing fourteen (bad-1001..1011, bad-1013, bad-1015, bad-1016), because it was written against 23bee586 where that clause did not exist. Build committed before the run, which is the rule-6 remedy v0.7-RUN.md promised after the blind run breached it.",
       "reasonParity": "68/192",
       "reasonParityNote": "Condition codes for the new class were chosen from the spec text without reading the corpus's declared codes, so the new refusals report carried-record-invalid, which is this implementation's name and not necessarily the corpus's. The absolute figure is unchanged from the 68/178 this build scored before the fix; the denominator grew by the fourteen newly refused.",
       "checkerCommitNote": "Names the squash-merge commit on main, not the pre-merge commit that carried the build. Both trees produce checkerSourceDigest 4757a94a, but only this one is reachable from a fresh clone, which is the access path a reproduction actually uses. The pre-merge SHA still answers the GitHub API and would look fine to anyone checking it that way, which is what makes the trap quiet. Same lesson as the revision-6 suite repin in this index, applied to the checker side rather than the suite side."
+    },
+    {
+      "file": "v0.7-rev26-directed-run.json",
+      "suiteRevision": 26,
+      "vectors": 250,
+      "suiteCommit": "5019931751041c815463faa569fbb159e01612a0",
+      "specDigest": "sha256:759d2383e5da36fa509dc335e6159a20b87641b25ebbadcf1676c55d75ffd8b0",
+      "acceptParity": "55/55",
+      "rejectParity": "193/193",
+      "indeterminateParity": "2/2",
+      "reasonParity": "69/193",
+      "reportSha256": "sha256:536432f8e439c8fcf95e72d7b651a60b5d85d6ed04d5ec61a532caf420ef6b1e",
+      "checkerCommit": "b49e3cd7b25a52ff8bbb01116a879b493e226729",
+      "checkerCommitNote": "Placeholder until this branch squash-merges; repoint to the commit on main, per the trap the revision-25 entry records: a pre-merge SHA still answers the GitHub API and looks fine to anyone checking it that way, while not being reachable from a fresh clone.",
+      "checkerSourceDigest": "sha256:6f6f9609c650011ec87778e8edcc450fbe4ccfa211789d2b08d5a8373cd4e7f1",
+      "continuouslyVerified": true,
+      "note": "Directed. Reads the clean-row conjuncts into the existential bullet as well as its universal partner, on the author's ruling that both say 'every constraint of its kind' and differ in quantifier rather than in constraint set. The asymmetry it replaces was outcome-free on revision 25: 0 of 248 vectors could discriminate the two readings, because every dirty seal there was paired with a clean witness. bad-1017 is cut to discriminate it. Positive control on the mutated line: reverting the condition moves exactly one vector and reason parity 69 -> 68.",
+      "reasonParityNote": "Up one from 68, with the denominator grown by one. The gain is bad-1017 alone, where sealed-record-absent is now reached; the carried-record-invalid family is unchanged and still collapses three kind-keyed names the corpus distinguishes."
     }
   ]
 }
