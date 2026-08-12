@@ -1590,9 +1590,11 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                 // records supply the set on a check that reads no row is not stated
                 // here and is not settled by it", so this is a declared reading and
                 // not a derivation. We take every `arming` record any row resolves.
-                // Measured against suite 5019931: the three vectors carrying an arming
-                // posture that differs from the pinned digest (bad-703, bad-717,
-                // bad-902) all refuse at row-level coverage before reaching here, and
+                // Measured against suite 5019931: the vectors that could
+                // discriminate it all refuse at row-level coverage before reaching
+                // here: bad-703 and bad-902 carry a divergent arming posture, and
+                // bad-717 carries none at all, which its name says and which a
+                // posture census reads as absence rather than divergence, and
                 // on the vectors that do reach it every arming posture equals the
                 // pinned digest, so this reading and its two rivals are observationally
                 // identical over all 250. Changing it needs a vector, not an opinion.
@@ -1688,7 +1690,19 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                 // is how the text distinguishes them, so a run whose seal
                 // legitimately covers no clean row is refused here on the
                 // conjunct it actually violates rather than on absence.
-                if ce.kind == RecordKind::Sealed && !ce.sealed_covers_clean {
+                // The arming conjunct has to be re-applied here too. Before the
+                // scope fix it rode inside `sealed_covers_clean` and so reached
+                // all three consumers at once; hoisting it out gave it back to
+                // the row check and the existential and silently dropped it
+                // here, while this refusal message went on telling the producer
+                // it had been applied. Restored against the same union the
+                // existential uses, which keeps this site's behaviour identical
+                // to what it was before the fix.
+                let sweep_arming_ok = ce
+                    .sealed_posture
+                    .as_deref()
+                    .is_some_and(|pd| arming_postures.iter().all(|a| a == pd));
+                if ce.kind == RecordKind::Sealed && !(ce.sealed_covers_clean && sweep_arming_ok) {
                     return Err(Fail::new("carried-record-invalid", format!(
                         "observationRecords[{idx}] is a sealed record binding to this run whose clean-row conjuncts do not hold: aeeStillArmed, the drop count against its bound, and aeePostureDigest against both the pinned networkPosture digest and every carried arming record"
                     )));
