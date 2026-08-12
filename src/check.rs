@@ -317,8 +317,13 @@ struct CoverEval {
     /// Some(reason) when the record covers nothing for kind-constraint
     /// reasons (distinct from the hard validity requirements).
     non_covering: Option<String>,
-    /// For sealed records: additionally covers a clean row.
+    /// For sealed records: additionally covers a clean row, on the conjuncts
+    /// that are properties of the record alone.
     sealed_covers_clean: bool,
+    /// For sealed records: the declared `aeePostureDigest`. Carried out rather
+    /// than compared inside, because the remaining conjunct is a property of
+    /// (record, row) and this value is cached per record.
+    sealed_posture: Option<String>,
 }
 
 struct Ctx<'a> {
@@ -331,11 +336,6 @@ struct Ctx<'a> {
     /// The value `aeeObservedSet` must equal, recomputed over the carried
     /// interception and examination records.
     observed_set: &'a str,
-    /// Every `aeePostureDigest` carried by an arming record in this statement.
-    /// A sealed record's posture must equal the arming record's as well as the
-    /// pinned one; carrying both conjuncts here is what lets the covering rule
-    /// be read whole rather than in the half a pinned-only comparison sees.
-    arming_postures: &'a [String],
 }
 
 /// The `aeeKind` token of a carried record, read without applying any
@@ -389,6 +389,7 @@ fn referenced_record_validity(rec: &RecordEval, idx: usize, ctx: &Ctx) -> R<Cove
     let method = parse_method(method_tok);
     let mut non_covering: Option<String> = None;
     let mut sealed_covers_clean = false;
+    let mut sealed_posture: Option<String> = None;
 
     if unimplemented_binding_version {
         non_covering = Some(format!(
@@ -440,7 +441,10 @@ fn referenced_record_validity(rec: &RecordEval, idx: usize, ctx: &Ctx) -> R<Cove
                         Some("sealed record is not signed aeeMethod intercepted".into());
                 } else {
                     match check_sealed(payload, ctx) {
-                        Ok(covers_clean) => sealed_covers_clean = covers_clean,
+                        Ok((covers_clean, posture)) => {
+                            sealed_covers_clean = covers_clean;
+                            sealed_posture = Some(posture);
+                        }
                         Err(e) => non_covering = Some(e.msg),
                     }
                 }
@@ -459,6 +463,7 @@ fn referenced_record_validity(rec: &RecordEval, idx: usize, ctx: &Ctx) -> R<Cove
         method,
         non_covering,
         sealed_covers_clean,
+        sealed_posture,
     })
 }
 
@@ -599,7 +604,7 @@ fn check_arming(payload: &Value, ctx: &Ctx) -> R<()> {
 
 /// Sealed-record constraints. Returns whether the record covers a clean
 /// row; a structural violation is an error (covers nothing at all).
-fn check_sealed(payload: &Value, ctx: &Ctx) -> R<bool> {
+fn check_sealed(payload: &Value, ctx: &Ctx) -> R<(bool, String)> {
     let still_armed = payload
         .get("aeeStillArmed")
         .ok_or_else(|| Fail("sealed record payload is missing aeeStillArmed".into()))?
@@ -656,11 +661,17 @@ fn check_sealed(payload: &Value, ctx: &Ctx) -> R<bool> {
     // "equals both the arming record's and the pinned networkPosture digest".
     // The pinned conjunct alone leaves an arming/sealed posture disagreement
     // uncaught on a statement whose pinned comparison passes.
+    // The arming conjunct is deliberately NOT evaluated here. Spec: a sealed
+    // record's posture must equal "the pinned `networkPosture` digest and the
+    // `aeePostureDigest` of every `arming` record the row resolves". That set is
+    // a property of the ROW, and this function's result is memoised per record
+    // in `cover_cache`, so folding a row-dependent term in here would let the
+    // first row that resolves a record decide the answer for every later one.
+    // The caller applies it against the set the row itself resolves.
     let covers_clean = still_armed
         && (drop_count == 0 || drop_bound.is_some_and(|b| drop_count <= b))
-        && posture == ctx.posture_digest
-        && ctx.arming_postures.iter().all(|a| a == posture);
-    Ok(covers_clean)
+        && posture == ctx.posture_digest;
+    Ok((covers_clean, posture.to_string()))
 }
 
 // ---------------------------------------------------------------------------
@@ -1334,7 +1345,6 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
             issued_at,
             manifest_attacks: &manifest_attack_ids,
             observed_set: &observed_set,
-            arming_postures: &arming_postures,
         };
         for (i, row) in rows.iter().enumerate() {
             if row.basis != Some("substrate") {
@@ -1424,9 +1434,35 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                     if !has(RecordKind::Arming) {
                         return Err(Fail::new("row-uncovered-arming", because(format!("attackResults[{i}] is a clean intercepted row with no covering arming record"))));
                     }
-                    let sealed_ok = covering_kinds
+                    // Spec: a sealed record's `aeePostureDigest` must equal the pinned
+                    // digest "and the `aeePostureDigest` of every `arming` record the
+                    // row resolves". The quantifier is stated over THIS row, so the set
+                    // is built from this row's own references. The union over every row
+                    // that this previously used is over-broad: it can refuse a row on
+                    // the posture of an arming record a different row resolves.
+                    let row_arming: Vec<&str> = row
+                        .refs
                         .iter()
-                        .any(|(k, _, clean)| *k == RecordKind::Sealed && *clean);
+                        .filter_map(|r| usize::try_from(*r).ok())
+                        .filter_map(|idx| records.get(idx))
+                        .filter(|rec| record_kind_of(rec) == RecordKind::Arming)
+                        .filter_map(|rec| {
+                            rec.payload
+                                .as_ref()
+                                .and_then(|p| p.get("aeePostureDigest"))
+                                .and_then(|v| v.as_str())
+                        })
+                        .collect();
+                    let sealed_ok = covering_kinds.iter().zip(row_covering[i].iter()).any(
+                        |((k, _, clean), idx)| {
+                            *k == RecordKind::Sealed
+                                && *clean
+                                && cover_cache[*idx]
+                                    .as_ref()
+                                    .and_then(|ce| ce.sealed_posture.as_deref())
+                                    .is_some_and(|pd| row_arming.iter().all(|a| *a == pd))
+                        },
+                    );
                     if !sealed_ok {
                         return Err(Fail::new("row-uncovered-sealed", because(format!("attackResults[{i}] is a clean intercepted row with no covering sealed record"))));
                     }
@@ -1506,7 +1542,6 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                 issued_at,
                 manifest_attacks: &manifest_attack_ids,
                 observed_set: &observed_set,
-                arming_postures: &arming_postures,
             };
             let mut valid_sealed = 0usize;
             for (idx, k) in kinds.iter().enumerate() {
@@ -1550,7 +1585,24 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                 // vectors discriminated. `bad-1017` is the vector cut to discriminate it,
                 // and it grades the condition rather than the verdict, which stays invalid
                 // under both readings.
-                if ce.non_covering.is_none() && ce.sealed_covers_clean {
+                // The arming conjunct on a check that reads no row. The spec states
+                // the sentence over a row and says outright that "which `arming`
+                // records supply the set on a check that reads no row is not stated
+                // here and is not settled by it", so this is a declared reading and
+                // not a derivation. We take every `arming` record any row resolves.
+                // Measured against suite 5019931: the vectors that could
+                // discriminate it all refuse at row-level coverage before reaching
+                // here: bad-703 and bad-902 carry a divergent arming posture, and
+                // bad-717 carries none at all, which its name says and which a
+                // posture census reads as absence rather than divergence, and
+                // on the vectors that do reach it every arming posture equals the
+                // pinned digest, so this reading and its two rivals are observationally
+                // identical over all 250. Changing it needs a vector, not an opinion.
+                let arming_ok = ce
+                    .sealed_posture
+                    .as_deref()
+                    .is_some_and(|pd| arming_postures.iter().all(|a| a == pd));
+                if ce.non_covering.is_none() && ce.sealed_covers_clean && arming_ok {
                     valid_sealed += 1;
                 }
             }
@@ -1638,7 +1690,19 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                 // is how the text distinguishes them, so a run whose seal
                 // legitimately covers no clean row is refused here on the
                 // conjunct it actually violates rather than on absence.
-                if ce.kind == RecordKind::Sealed && !ce.sealed_covers_clean {
+                // The arming conjunct has to be re-applied here too. Before the
+                // scope fix it rode inside `sealed_covers_clean` and so reached
+                // all three consumers at once; hoisting it out gave it back to
+                // the row check and the existential and silently dropped it
+                // here, while this refusal message went on telling the producer
+                // it had been applied. Restored against the same union the
+                // existential uses, which keeps this site's behaviour identical
+                // to what it was before the fix.
+                let sweep_arming_ok = ce
+                    .sealed_posture
+                    .as_deref()
+                    .is_some_and(|pd| arming_postures.iter().all(|a| a == pd));
+                if ce.kind == RecordKind::Sealed && !(ce.sealed_covers_clean && sweep_arming_ok) {
                     return Err(Fail::new("carried-record-invalid", format!(
                         "observationRecords[{idx}] is a sealed record binding to this run whose clean-row conjuncts do not hold: aeeStillArmed, the drop count against its bound, and aeePostureDigest against both the pinned networkPosture digest and every carried arming record"
                     )));
