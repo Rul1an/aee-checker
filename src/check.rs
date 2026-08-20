@@ -2123,6 +2123,17 @@ mod tests {
     /// Defect 2. `all()` over an empty set is vacuously true, so the arming
     /// comparison decides nothing and must not be named. 22 of 66 evaluations
     /// over the pinned corpus reach the site with this set empty.
+    ///
+    /// HONEST LIMIT, recorded rather than left to be discovered: this test
+    /// pins the message contract, NOT the `!arming_postures.is_empty()` guard
+    /// that states it. Deleting that guard leaves every test here green,
+    /// measured. The guard is redundant against the current formulation
+    /// precisely because `all()` is already vacuously true on empty, so no
+    /// input can distinguish its presence — a structural zero, not an
+    /// empirical one. It is kept because it states the rule where a reader
+    /// meets it, and because a future formulation that is not vacuously true
+    /// on empty (an explicit per-record loop, or an `any()`-based inversion)
+    /// would need it and would not announce that it did.
     #[test]
     fn empty_operand_set_is_not_named_as_a_comparison() {
         let r = reason(&["aeeStillArmed is false"], Some(PINNED), &[]);
