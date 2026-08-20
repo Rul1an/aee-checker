@@ -320,6 +320,10 @@ struct CoverEval {
     /// For sealed records: additionally covers a clean row, on the conjuncts
     /// that are properties of the record alone.
     sealed_covers_clean: bool,
+    /// For sealed records: which of those conjuncts failed, each one evaluated.
+    /// Carried so a refusal names the comparisons that ran and failed rather
+    /// than the whole conjunction.
+    sealed_clean_failures: Vec<&'static str>,
     /// For sealed records: the declared `aeePostureDigest`. Carried out rather
     /// than compared inside, because the remaining conjunct is a property of
     /// (record, row) and this value is cached per record.
@@ -389,6 +393,7 @@ fn referenced_record_validity(rec: &RecordEval, idx: usize, ctx: &Ctx) -> R<Cove
     let method = parse_method(method_tok);
     let mut non_covering: Option<String> = None;
     let mut sealed_covers_clean = false;
+    let mut sealed_clean_failures: Vec<&'static str> = Vec::new();
     let mut sealed_posture: Option<String> = None;
 
     if unimplemented_binding_version {
@@ -441,8 +446,9 @@ fn referenced_record_validity(rec: &RecordEval, idx: usize, ctx: &Ctx) -> R<Cove
                         Some("sealed record is not signed aeeMethod intercepted".into());
                 } else {
                     match check_sealed(payload, ctx) {
-                        Ok((covers_clean, posture)) => {
-                            sealed_covers_clean = covers_clean;
+                        Ok((failures, posture)) => {
+                            sealed_covers_clean = failures.is_empty();
+                            sealed_clean_failures = failures;
                             sealed_posture = Some(posture);
                         }
                         Err(e) => non_covering = Some(e.msg),
@@ -463,6 +469,7 @@ fn referenced_record_validity(rec: &RecordEval, idx: usize, ctx: &Ctx) -> R<Cove
         method,
         non_covering,
         sealed_covers_clean,
+        sealed_clean_failures,
         sealed_posture,
     })
 }
@@ -604,7 +611,51 @@ fn check_arming(payload: &Value, ctx: &Ctx) -> R<()> {
 
 /// Sealed-record constraints. Returns whether the record covers a clean
 /// row; a structural violation is an error (covers nothing at all).
-fn check_sealed(payload: &Value, ctx: &Ctx) -> R<(bool, String)> {
+/// Assemble the carried-record sweep's refusal from the comparisons that were
+/// actually evaluated on this statement and failed.
+///
+/// A refusal message is a claim about which comparisons ran, so the set it
+/// describes has to be the set that was evaluated. Three ways that can break,
+/// all of which this function exists to prevent and all of which the corpus is
+/// blind to, since verdicts are unchanged either way:
+///
+///   1. Naming a comparison that never ran. The record-local conjuncts are
+///      evaluated individually in `check_sealed` rather than under `&&`, and
+///      only the ones that failed are named.
+///   2. Naming a comparison whose operand set is empty. `all()` over an empty
+///      set is vacuously true, so the arming term decides nothing there and is
+///      omitted rather than asserted.
+///   3. Describing a set wider than the one compared. The operands are the
+///      arming records the rows resolve, never "every carried arming record",
+///      a phrase that appears nowhere in the specification.
+fn sealed_sweep_reason(
+    idx: usize,
+    clean_failures: &[&'static str],
+    sealed_posture: Option<&str>,
+    arming_postures: &[String],
+) -> String {
+    let mut failed: Vec<String> = clean_failures.iter().map(|s| (*s).to_string()).collect();
+    match sealed_posture {
+        // Unreachable for a sealed record whose `non_covering` is None, since
+        // `check_sealed` requires the member. Named explicitly so an absent
+        // value cannot read as a comparison that was made and failed.
+        None => failed.push("aeePostureDigest is absent".to_string()),
+        Some(pd) if !arming_postures.is_empty() && !arming_postures.iter().all(|a| a == pd) => {
+            let n = arming_postures.len();
+            failed.push(format!(
+                "aeePostureDigest differs from the aeePostureDigest of the {n} arming record{} the rows resolve",
+                if n == 1 { "" } else { "s" }
+            ));
+        }
+        Some(_) => {}
+    }
+    format!(
+        "observationRecords[{idx}] is a sealed record binding to this run whose clean-row conjuncts do not hold: {}",
+        failed.join("; ")
+    )
+}
+
+fn check_sealed(payload: &Value, ctx: &Ctx) -> R<(Vec<&'static str>, String)> {
     let still_armed = payload
         .get("aeeStillArmed")
         .ok_or_else(|| Fail("sealed record payload is missing aeeStillArmed".into()))?
@@ -668,10 +719,25 @@ fn check_sealed(payload: &Value, ctx: &Ctx) -> R<(bool, String)> {
     // in `cover_cache`, so folding a row-dependent term in here would let the
     // first row that resolves a record decide the answer for every later one.
     // The caller applies it against the set the row itself resolves.
-    let covers_clean = still_armed
-        && (drop_count == 0 || drop_bound.is_some_and(|b| drop_count <= b))
-        && posture == ctx.posture_digest;
-    Ok((covers_clean, posture.to_string()))
+    //
+    // Every conjunct is evaluated rather than short-circuited, so a refusal can
+    // name the ones that actually failed. Under `&&` a caller could only name the
+    // whole conjunction, which reported comparisons that never ran: `bad-1003`
+    // through `bad-1006` fail on four different conjuncts and emitted one
+    // byte-identical string. A refusal is a claim about which comparisons ran,
+    // so the set it names has to be the set that was evaluated.
+    let mut clean_failures: Vec<&'static str> = Vec::new();
+    if !still_armed {
+        clean_failures.push("aeeStillArmed is false");
+    }
+    if !(drop_count == 0 || drop_bound.is_some_and(|b| drop_count <= b)) {
+        clean_failures
+            .push("aeeDropCount is non-zero and exceeds its aeeDropBound, or declares no bound");
+    }
+    if posture != ctx.posture_digest {
+        clean_failures.push("aeePostureDigest differs from the pinned networkPosture digest");
+    }
+    Ok((clean_failures, posture.to_string()))
 }
 
 // ---------------------------------------------------------------------------
@@ -1698,14 +1764,37 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                 // it had been applied. Restored against the same union the
                 // existential uses, which keeps this site's behaviour identical
                 // to what it was before the fix.
-                let sweep_arming_ok = ce
-                    .sealed_posture
-                    .as_deref()
-                    .is_some_and(|pd| arming_postures.iter().all(|a| a == pd));
+                //
+                // The message names only comparisons that were evaluated on this
+                // statement and failed. Three things it used to get wrong, each a
+                // way of describing a set that was not the set evaluated:
+                //   1. it named all three record-local conjuncts although `&&`
+                //      short-circuits, so it reported comparisons that never ran;
+                //   2. it named the arming comparison even when the operand set
+                //      was empty, where `.all()` is vacuously true and the term
+                //      decides nothing (22 of 66 evaluations over the corpus);
+                //   3. it called the operand set "every carried arming record"
+                //      when the set is built from the records the ROWS RESOLVE.
+                //      The phrase appears nowhere in the specification, which
+                //      says "every `arming` record the row resolves".
+                let sweep_arming_ok = match ce.sealed_posture.as_deref() {
+                    // Unreachable for a sealed record whose `non_covering` is
+                    // None, since `check_sealed` requires the member; kept
+                    // explicit so the absent case cannot silently read as a
+                    // failed comparison.
+                    None => false,
+                    Some(pd) => arming_postures.iter().all(|a| a == pd),
+                };
                 if ce.kind == RecordKind::Sealed && !(ce.sealed_covers_clean && sweep_arming_ok) {
-                    return Err(Fail::new("carried-record-invalid", format!(
-                        "observationRecords[{idx}] is a sealed record binding to this run whose clean-row conjuncts do not hold: aeeStillArmed, the drop count against its bound, and aeePostureDigest against both the pinned networkPosture digest and every carried arming record"
-                    )));
+                    return Err(Fail::new(
+                        "carried-record-invalid",
+                        sealed_sweep_reason(
+                            idx,
+                            &ce.sealed_clean_failures,
+                            ce.sealed_posture.as_deref(),
+                            &arming_postures,
+                        ),
+                    ));
                 }
             }
 
@@ -1907,4 +1996,191 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
         tiers_with_key,
         tiers_without_key,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+//
+// These pin the refusal-message discipline the corpus cannot see. Every case
+// below leaves all 250 verdicts unchanged, which is exactly why none of the
+// defects they cover was caught by conformance: they live in the free-form
+// reason, which the suite declares informative. A rule this file states about
+// its own messages has to be held by a test in this file.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn payload(src: &str) -> Value {
+        match json::parse(src.as_bytes()) {
+            Ok(v) => v,
+            Err(e) => panic!("test payload does not parse: {}", e.0),
+        }
+    }
+
+    /// `Fail` deliberately carries no `Debug`, so tests unwrap by hand rather
+    /// than widening a production type to suit them.
+    fn ok_sealed(v: &Value, c: &Ctx) -> (Vec<&'static str>, String) {
+        match check_sealed(v, c) {
+            Ok(t) => t,
+            Err(e) => panic!("unexpected refusal: {}", e.msg),
+        }
+    }
+
+    fn ctx<'a>(posture: &'a str, observed_set: &'a str, attacks: &'a [String]) -> Ctx<'a> {
+        Ctx {
+            run_binding: "rb",
+            posture_digest: posture,
+            issued_at: time::Instant { epoch_seconds: 0, nanos: 0 },
+            manifest_attacks: attacks,
+            observed_set,
+        }
+    }
+
+    const PINNED: &str =
+        "1111111111111111111111111111111111111111111111111111111111111111";
+    const OBSERVED: &str =
+        "2222222222222222222222222222222222222222222222222222222222222222";
+
+    fn sealed(still_armed: bool, drops: i64, bound: Option<i64>, posture: &str) -> Value {
+        let bound = match bound {
+            Some(b) => format!(r#","aeeDropBound":{b}"#),
+            None => String::new(),
+        };
+        payload(&format!(
+            r#"{{"aeeStillArmed":{still_armed},"aeeDropCount":{drops}{bound},"aeePostureDigest":"{posture}","aeeObservedSet":"{OBSERVED}","aeeObservedAttacks":[]}}"#
+        ))
+    }
+
+    // -- check_sealed evaluates every conjunct -----------------------------
+
+    #[test]
+    fn clean_sealed_record_reports_no_failure() {
+        let a: Vec<String> = vec![];
+        let (failures, posture) = ok_sealed(&sealed(true, 0, None, PINNED), &ctx(PINNED, OBSERVED, &a));
+        assert!(failures.is_empty(), "unexpected failures: {failures:?}");
+        assert_eq!(posture, PINNED);
+    }
+
+    /// The regression this file was changed for. Under `&&` only the first
+    /// failing conjunct decided the result and the caller named all three, so
+    /// four vectors failing on four different conjuncts emitted one identical
+    /// string. Every conjunct is evaluated, so every failure is reportable.
+    #[test]
+    fn every_failing_conjunct_is_reported_not_just_the_first() {
+        let a: Vec<String> = vec![];
+        let other = "3333333333333333333333333333333333333333333333333333333333333333";
+        // still_armed false AND posture mismatched: a short-circuiting
+        // implementation can only ever see the first of these.
+        let (failures, _) = ok_sealed(&sealed(false, 0, None, other), &ctx(PINNED, OBSERVED, &a));
+        assert_eq!(failures.len(), 2, "got {failures:?}");
+        assert!(failures.iter().any(|f| f.contains("aeeStillArmed")));
+        assert!(failures.iter().any(|f| f.contains("pinned networkPosture")));
+    }
+
+    #[test]
+    fn each_conjunct_is_named_on_its_own() {
+        let a: Vec<String> = vec![];
+        let c = ctx(PINNED, OBSERVED, &a);
+        let only = |v: &Value| -> Vec<&'static str> { ok_sealed(v, &c).0 };
+
+        assert_eq!(only(&sealed(false, 0, None, PINNED)).len(), 1);
+        // drops with no bound declared, and drops over a declared bound
+        assert_eq!(only(&sealed(true, 1, None, PINNED)).len(), 1);
+        assert_eq!(only(&sealed(true, 5, Some(2), PINNED)).len(), 1);
+        // drops within a declared bound is not a failure
+        assert!(only(&sealed(true, 2, Some(5), PINNED)).is_empty());
+    }
+
+    // -- the refusal names only what was evaluated -------------------------
+
+    fn reason(failures: &[&'static str], posture: Option<&str>, arming: &[&str]) -> String {
+        let arming: Vec<String> = arming.iter().map(|s| (*s).to_string()).collect();
+        sealed_sweep_reason(1, failures, posture, &arming)
+    }
+
+    /// Defect 3. The operand set is the arming records the ROWS RESOLVE. The
+    /// old message called it "every carried arming record", a phrase that
+    /// appears nowhere in the specification and describes a strict superset.
+    #[test]
+    fn refusal_never_describes_the_operand_set_as_carried() {
+        let other = "3333333333333333333333333333333333333333333333333333333333333333";
+        let cases = [
+            reason(&["aeeStillArmed is false"], Some(PINNED), &[]),
+            reason(&[], Some(PINNED), &[other]),
+            reason(&["aeeStillArmed is false"], Some(PINNED), &[other, other]),
+            reason(&[], None, &[]),
+        ];
+        for r in cases {
+            assert!(
+                !r.contains("carried arming"),
+                "refusal describes the operand set as carried: {r}"
+            );
+        }
+    }
+
+    /// Defect 2. `all()` over an empty set is vacuously true, so the arming
+    /// comparison decides nothing and must not be named. 22 of 66 evaluations
+    /// over the pinned corpus reach the site with this set empty.
+    ///
+    /// HONEST LIMIT, recorded rather than left to be discovered: this test
+    /// pins the message contract, NOT the `!arming_postures.is_empty()` guard
+    /// that states it. Deleting that guard leaves every test here green,
+    /// measured. The guard is redundant against the current formulation
+    /// precisely because `all()` is already vacuously true on empty, so no
+    /// input can distinguish its presence — a structural zero, not an
+    /// empirical one. It is kept because it states the rule where a reader
+    /// meets it, and because a future formulation that is not vacuously true
+    /// on empty (an explicit per-record loop, or an `any()`-based inversion)
+    /// would need it and would not announce that it did.
+    #[test]
+    fn empty_operand_set_is_not_named_as_a_comparison() {
+        let r = reason(&["aeeStillArmed is false"], Some(PINNED), &[]);
+        assert!(
+            !r.contains("arming record"),
+            "named a comparison over an empty operand set: {r}"
+        );
+        assert!(r.contains("aeeStillArmed is false"));
+    }
+
+    /// The other side of the same rule: a non-empty set that actually
+    /// disagrees IS named, and says how many operands it compared.
+    #[test]
+    fn non_empty_disagreeing_operand_set_is_named_with_its_size() {
+        let other = "3333333333333333333333333333333333333333333333333333333333333333";
+        let one = reason(&[], Some(PINNED), &[other]);
+        assert!(one.contains("1 arming record the rows resolve"), "{one}");
+        let two = reason(&[], Some(PINNED), &[other, other]);
+        assert!(two.contains("2 arming records the rows resolve"), "{two}");
+    }
+
+    /// A non-empty set that agrees is a comparison that ran and passed, so it
+    /// is not a failure and is not named either.
+    #[test]
+    fn agreeing_operand_set_is_not_named() {
+        let r = reason(&["aeeStillArmed is false"], Some(PINNED), &[PINNED]);
+        assert!(!r.contains("arming record"), "{r}");
+    }
+
+    /// Defect 1, at the message layer: distinct failing conjuncts must produce
+    /// distinct strings. The old message was byte-identical across all four.
+    #[test]
+    fn distinct_failures_produce_distinct_refusals() {
+        let rs = [
+            reason(&["aeeStillArmed is false"], Some(PINNED), &[]),
+            reason(&["aeeDropCount is non-zero and exceeds its aeeDropBound, or declares no bound"], Some(PINNED), &[]),
+            reason(&["aeePostureDigest differs from the pinned networkPosture digest"], Some(PINNED), &[]),
+        ];
+        let uniq: std::collections::BTreeSet<&String> = rs.iter().collect();
+        assert_eq!(uniq.len(), rs.len(), "refusals collapse distinct faults: {rs:?}");
+    }
+
+    /// An absent posture is an absence, not a comparison that was made.
+    #[test]
+    fn absent_posture_is_reported_as_absence() {
+        let r = reason(&[], None, &[]);
+        assert!(r.contains("aeePostureDigest is absent"), "{r}");
+        assert!(!r.contains("differs from"), "{r}");
+    }
 }
