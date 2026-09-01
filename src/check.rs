@@ -2280,20 +2280,32 @@ mod tests {
             r#"{{"aeeKind":"interception","aeeMethod":"intercepted","aeePayloadCommitment":["{commitment}"],"aeeRunBinding":"{run_binding}"}}"#
         ));
         let (i_env, i_leaf) = envelope(&interception);
+        let examination = payload(&format!(
+            r#"{{"aeeKind":"examination","aeeMethod":"reconstructed","aeeRunBinding":"{run_binding}"}}"#
+        ));
+        let (e_env, e_leaf) = envelope(&examination);
         // The recompute's own definition: the leaves of the interception and
-        // examination records, never the sealed record's.
-        let recompute = jcs(&Value::Array(vec![Value::String(hex::encode(i_leaf))]));
+        // examination records, never the sealed record's. Derived here from
+        // both kinds independently of the production filter, so a filter that
+        // drifts to one kind flips the positive control: the reviewer's
+        // narrowing mutation left every test green while this array held one
+        // leaf, because a one-kind fixture cannot tell the two filters apart.
+        let mut observed_leaves = vec![hex::encode(i_leaf), hex::encode(e_leaf)];
+        observed_leaves.sort_by_key(|h| json::utf16_units(h));
+        let recompute = jcs(&Value::Array(
+            observed_leaves.into_iter().map(Value::String).collect(),
+        ));
         let sealed_observed = observed.unwrap_or(&recompute).to_string();
         let sealed = payload(&format!(
             r#"{{"aeeDropCount":0,"aeeKind":"sealed","aeeMethod":"intercepted","aeeObservedAttacks":[],"aeeObservedSet":"{sealed_observed}","aeePostureDigest":"{posture_member_digest}","aeeRunBinding":"{run_binding}","aeeStillArmed":true}}"#
         ));
         let (s_env, s_leaf) = envelope(&sealed);
         let batch_root = hex::encode(
-            merkle::root_over_leaves(&[i_leaf, s_leaf]).expect("two leaves have a root"),
+            merkle::root_over_leaves(&[i_leaf, s_leaf, e_leaf]).expect("three leaves have a root"),
         );
 
         format!(
-            r#"{{"_type":"{STATEMENT_TYPE}","predicateType":"{PREDICATE_TYPE}","subject":[{{"digest":{{"sha256":"{subject_digest}"}},"name":"artifact"}}],"predicate":{{"issuedAt":"2026-01-01T00:00:00Z","result":"fail","observationEnvironment":{{"substrate":{{"name":"sub","digest":{{"sha256":"{substrate_digest}"}}}},"corpus":{{"name":"corpus","uri":"https://example.invalid/corpus","digest":{{"sha256":"{corpus_digest}"}},"manifest":{{"classes":{{"cls":["atk-1"]}}}}}},"catchPolicy":{{"digest":{{"sha256":"{catch_policy_digest}"}}}},"networkPosture":{{"digest":{{"sha256":"{posture_member_digest}"}},"posture":"no_network"}},"observationVocabulary":{{"labels":["caught","clean"],"caught":["caught"],"digest":{{"sha256":"{vocab_digest}"}}}},"runEntropy":{{"digest":{{"sha256":"{run_entropy_digest}"}}}}}},"coverage":{{"assessedClasses":["cls"],"outOfScope":{{}},"routedElsewhere":{{}}}},"attackResults":[{{"attackId":"atk-1","containmentObserved":"caught","basis":"substrate","method":"intercepted","attribution":"paired","actualLayer":"transport","observationRefs":[0]}}],"observationRecords":[{i_env},{s_env}],"batchRoot":"{batch_root}"}}}}"#
+            r#"{{"_type":"{STATEMENT_TYPE}","predicateType":"{PREDICATE_TYPE}","subject":[{{"digest":{{"sha256":"{subject_digest}"}},"name":"artifact"}}],"predicate":{{"issuedAt":"2026-01-01T00:00:00Z","result":"fail","observationEnvironment":{{"substrate":{{"name":"sub","digest":{{"sha256":"{substrate_digest}"}}}},"corpus":{{"name":"corpus","uri":"https://example.invalid/corpus","digest":{{"sha256":"{corpus_digest}"}},"manifest":{{"classes":{{"cls":["atk-1"]}}}}}},"catchPolicy":{{"digest":{{"sha256":"{catch_policy_digest}"}}}},"networkPosture":{{"digest":{{"sha256":"{posture_member_digest}"}},"posture":"no_network"}},"observationVocabulary":{{"labels":["caught","clean"],"caught":["caught"],"digest":{{"sha256":"{vocab_digest}"}}}},"runEntropy":{{"digest":{{"sha256":"{run_entropy_digest}"}}}}}},"coverage":{{"assessedClasses":["cls"],"outOfScope":{{}},"routedElsewhere":{{}}}},"attackResults":[{{"attackId":"atk-1","containmentObserved":"caught","basis":"substrate","method":"intercepted","attribution":"paired","actualLayer":"transport","observationRefs":[0]}}],"observationRecords":[{i_env},{s_env},{e_env}],"batchRoot":"{batch_root}"}}}}"#
         )
         .into_bytes()
     }
