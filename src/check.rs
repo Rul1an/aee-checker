@@ -655,6 +655,14 @@ fn sealed_sweep_reason(
     )
 }
 
+/// The set the `aeeObservedSet` recompute evaluates, named once so both
+/// refusal sites state the same set. The recompute filters the carried array
+/// to `interception` and `examination` records, and a refusal saying "the
+/// carried records" names every carried kind, including `arming` and `sealed`
+/// records the recompute never reads: a wider set than the one evaluated,
+/// which tells the producer to repair records the check never read.
+const OBSERVED_SET_EVALUATED: &str = "the carried interception and examination records";
+
 fn check_sealed(payload: &Value, ctx: &Ctx) -> R<(Vec<&'static str>, String)> {
     let still_armed = payload
         .get("aeeStillArmed")
@@ -689,9 +697,9 @@ fn check_sealed(payload: &Value, ctx: &Ctx) -> R<(Vec<&'static str>, String)> {
         return Err(Fail("sealed record aeeObservedSet is not lowercase 64-hex".into()));
     }
     if observed_set != ctx.observed_set {
-        return Err(Fail(
-            "sealed record aeeObservedSet does not equal the value recomputed over the carried records".into(),
-        ));
+        return Err(Fail(format!(
+            "sealed record aeeObservedSet does not equal the value recomputed over {OBSERVED_SET_EVALUATED}"
+        )));
     }
     // 0.7: the attacks this run attributed at least one of its own
     // observations to. The empty array is the honest value and is required
@@ -1626,7 +1634,7 @@ fn check_inner(statement_bytes: &[u8], pinned_key: Option<&VerifyingKey>) -> R<V
                         Some(v) if v == observed_set => {}
                         Some(_) => {
                             return Err(Fail::new("observed-set-mismatch", format!(
-                                "observationRecords[{idx}] is a sealed record whose aeeObservedSet does not equal the recompute over the carried records"
+                                "observationRecords[{idx}] is a sealed record whose aeeObservedSet does not equal the recompute over {OBSERVED_SET_EVALUATED}"
                             )))
                         }
                         None => {
@@ -2182,5 +2190,162 @@ mod tests {
         let r = reason(&[], None, &[]);
         assert!(r.contains("aeePostureDigest is absent"), "{r}");
         assert!(!r.contains("differs from"), "{r}");
+    }
+
+    // -- the observed-set refusal names the set the recompute evaluated ----
+    //
+    // The aeeObservedSet recompute filters the carried array to interception
+    // and examination records; the member's own definition names those two
+    // kinds. A refusal saying the value was recomputed over "the carried
+    // records" names every carried kind, including arming and sealed records
+    // the recompute never reads, and the refusal-set clause forbids naming a
+    // set wider than the one evaluated: it tells the producer to repair
+    // records the check never read.
+
+    #[test]
+    fn sealed_observed_set_refusal_names_the_two_evaluated_kinds() {
+        let a: Vec<String> = vec![];
+        let c = ctx(PINNED, OBSERVED, &a);
+        let divergent = "3333333333333333333333333333333333333333333333333333333333333333";
+        let pl = payload(&format!(
+            r#"{{"aeeStillArmed":true,"aeeDropCount":0,"aeePostureDigest":"{PINNED}","aeeObservedSet":"{divergent}","aeeObservedAttacks":[]}}"#
+        ));
+        let msg = match check_sealed(&pl, &c) {
+            Err(e) => e.msg,
+            Ok(_) => panic!("divergent aeeObservedSet unexpectedly covers"),
+        };
+        assert!(
+            msg.contains("recomputed over the carried interception and examination records"),
+            "refusal does not name the evaluated set: {msg}"
+        );
+        assert!(
+            !msg.contains("over the carried records"),
+            "refusal names a wider set than the recompute evaluated: {msg}"
+        );
+    }
+
+    fn jcs(v: &Value) -> String {
+        match jcs_sha256_hex(v) {
+            Ok(h) => h,
+            Err(e) => panic!("cannot digest: {}", e.msg),
+        }
+    }
+
+    fn canonical(v: &Value) -> Vec<u8> {
+        match json::to_canonical_bytes(v) {
+            Ok(b) => b,
+            Err(e) => panic!("cannot canonicalize: {e}"),
+        }
+    }
+
+    /// A full statement that is valid end to end, except that when `observed`
+    /// is Some the carried sealed record commits to that value instead of the
+    /// recompute. The two twins differ in nothing else, so the refusal the
+    /// divergent twin draws is decided by the observed-set comparison alone.
+    fn observed_set_statement(observed: Option<&str>) -> Vec<u8> {
+        let hex64 = |c: char| -> String { std::iter::repeat_n(c, 64).collect() };
+        let subject_digest = hex64('a');
+        let substrate_digest = hex64('b');
+        let catch_policy_digest = hex64('c');
+        let posture_member_digest = hex64('d');
+        let run_entropy_digest = hex64('e');
+
+        let manifest = payload(r#"{"classes":{"cls":["atk-1"]}}"#);
+        let corpus_digest = jcs(&manifest);
+        let vocab_preimage = payload(r#"{"caught":["caught"],"labels":["caught","clean"]}"#);
+        let vocab_digest = jcs(&vocab_preimage);
+        let posture = payload(&format!(
+            r#"{{"digest":{{"sha256":"{posture_member_digest}"}},"posture":"no_network"}}"#
+        ));
+        let posture_object_digest = jcs(&posture);
+        let binding_preimage = payload(&format!(
+            r#"{{"aeeBindingVersion":"2","catchPolicy":"{catch_policy_digest}","corpus":"{corpus_digest}","networkPosture":"{posture_object_digest}","observationVocabulary":"{vocab_digest}","runEntropy":"{run_entropy_digest}","subject":"{subject_digest}","substrate":"{substrate_digest}"}}"#
+        ));
+        let run_binding = jcs(&binding_preimage);
+
+        let ptype = "application/vnd.test.record+json";
+        let envelope = |pl: &Value| -> (String, [u8; 32]) {
+            let bytes = canonical(pl);
+            let leaf = merkle::leaf_hash(&merkle::pae(ptype, &bytes));
+            let env = format!(
+                r#"{{"payload":"{}","payloadType":"{ptype}","signatures":[{{"sig":"{}"}}]}}"#,
+                B64.encode(&bytes),
+                B64.encode(b"sig")
+            );
+            (env, leaf)
+        };
+
+        let commitment = hex64('f');
+        let interception = payload(&format!(
+            r#"{{"aeeKind":"interception","aeeMethod":"intercepted","aeePayloadCommitment":["{commitment}"],"aeeRunBinding":"{run_binding}"}}"#
+        ));
+        let (i_env, i_leaf) = envelope(&interception);
+        let examination = payload(&format!(
+            r#"{{"aeeKind":"examination","aeeMethod":"reconstructed","aeeRunBinding":"{run_binding}"}}"#
+        ));
+        let (e_env, e_leaf) = envelope(&examination);
+        // The recompute's own definition: the leaves of the interception and
+        // examination records, never the sealed record's. Derived here from
+        // both kinds independently of the production filter, so a filter that
+        // drifts to one kind flips the positive control: the reviewer's
+        // narrowing mutation left every test green while this array held one
+        // leaf, because a one-kind fixture cannot tell the two filters apart.
+        let mut observed_leaves = vec![hex::encode(i_leaf), hex::encode(e_leaf)];
+        observed_leaves.sort_by_key(|h| json::utf16_units(h));
+        let recompute = jcs(&Value::Array(
+            observed_leaves.into_iter().map(Value::String).collect(),
+        ));
+        let sealed_observed = observed.unwrap_or(&recompute).to_string();
+        let sealed = payload(&format!(
+            r#"{{"aeeDropCount":0,"aeeKind":"sealed","aeeMethod":"intercepted","aeeObservedAttacks":[],"aeeObservedSet":"{sealed_observed}","aeePostureDigest":"{posture_member_digest}","aeeRunBinding":"{run_binding}","aeeStillArmed":true}}"#
+        ));
+        let (s_env, s_leaf) = envelope(&sealed);
+        let batch_root = hex::encode(
+            merkle::root_over_leaves(&[i_leaf, s_leaf, e_leaf]).expect("three leaves have a root"),
+        );
+
+        format!(
+            r#"{{"_type":"{STATEMENT_TYPE}","predicateType":"{PREDICATE_TYPE}","subject":[{{"digest":{{"sha256":"{subject_digest}"}},"name":"artifact"}}],"predicate":{{"issuedAt":"2026-01-01T00:00:00Z","result":"fail","observationEnvironment":{{"substrate":{{"name":"sub","digest":{{"sha256":"{substrate_digest}"}}}},"corpus":{{"name":"corpus","uri":"https://example.invalid/corpus","digest":{{"sha256":"{corpus_digest}"}},"manifest":{{"classes":{{"cls":["atk-1"]}}}}}},"catchPolicy":{{"digest":{{"sha256":"{catch_policy_digest}"}}}},"networkPosture":{{"digest":{{"sha256":"{posture_member_digest}"}},"posture":"no_network"}},"observationVocabulary":{{"labels":["caught","clean"],"caught":["caught"],"digest":{{"sha256":"{vocab_digest}"}}}},"runEntropy":{{"digest":{{"sha256":"{run_entropy_digest}"}}}}}},"coverage":{{"assessedClasses":["cls"],"outOfScope":{{}},"routedElsewhere":{{}}}},"attackResults":[{{"attackId":"atk-1","containmentObserved":"caught","basis":"substrate","method":"intercepted","attribution":"paired","actualLayer":"transport","observationRefs":[0]}}],"observationRecords":[{i_env},{s_env},{e_env}],"batchRoot":"{batch_root}"}}}}"#
+        )
+        .into_bytes()
+    }
+
+    /// Positive control: the fixture is valid when the seal commits to the
+    /// recompute, so the divergent twin's refusal is decided by the
+    /// observed-set comparison and not by an unrelated defect.
+    #[test]
+    fn observed_set_statement_is_otherwise_valid() {
+        match check_inner(&observed_set_statement(None), None) {
+            Ok(Verdict::Valid { .. }) => {}
+            Ok(v) => panic!("expected Valid, got {v:?}"),
+            Err(f) => panic!("fixture is not otherwise valid: {}", f.msg),
+        }
+    }
+
+    /// The carried-sweep refusal, drawn through the real path: a statement
+    /// whose sealed record commits to a divergent observed set. The reason
+    /// must name the set the recompute evaluated, the carried interception
+    /// and examination records, and must not say "the carried records",
+    /// which includes kinds the recompute never reads.
+    #[test]
+    fn observed_set_sweep_refusal_names_the_two_evaluated_kinds() {
+        let divergent = "3333333333333333333333333333333333333333333333333333333333333333";
+        let f = match check_inner(&observed_set_statement(Some(divergent)), None) {
+            Err(f) => f,
+            Ok(v) => panic!("divergent aeeObservedSet unexpectedly accepted: {v:?}"),
+        };
+        assert_eq!(f.code, "observed-set-mismatch", "{}", f.msg);
+        assert!(f.msg.contains("observationRecords[1]"), "{}", f.msg);
+        assert!(
+            f.msg
+                .contains("recompute over the carried interception and examination records"),
+            "refusal does not name the evaluated set: {}",
+            f.msg
+        );
+        assert!(
+            !f.msg.contains("over the carried records"),
+            "refusal names a wider set than the recompute evaluated: {}",
+            f.msg
+        );
     }
 }
