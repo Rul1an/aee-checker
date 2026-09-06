@@ -142,3 +142,47 @@ One further thing is true of the current head and is recorded here so a later re
 rediscover it. The refusal-set clause, `b1513f62` on the fork's PR branch, is **not** an ancestor of
 the pinned commit. It lands after it, together with `a4cb887`. Anything said about that clause binds
 to the branch head and not to the digest this file names.
+
+### Two things in the section above went stale, appended 2026-09-06
+
+Same rule as before: appended and dated, not folded into the text it corrects.
+
+**The method is right and its evidence was not the whole test.** "Only a clone settles it" holds.
+But the intermediate probe a later reader would most naturally reach for — `git fetch --depth 1
+origin <sha>` against upstream — does **not** settle it either, for the same reason the API does
+not: it is served from the shared fork-network object store. Run as a negative control against
+`23bee586`, the very commit this section establishes as fork-only, that fetch **succeeds** from
+`in-toto/attestation`. A probe that cannot fail on a known negative is not a probe.
+
+What settles it is a plain clone with lazy fetch disabled, plus a reachability test against the refs
+upstream actually publishes:
+
+```
+git clone https://github.com/in-toto/attestation.git
+GIT_NO_LAZY_FETCH=1 git cat-file -e <sha>^{commit}   # absent for 23bee586 and for 25ac8581
+git for-each-ref                                     # 11 refs; neither sha is an ancestor of any
+git fetch origin refs/pull/570/head                  # = 25ac8581..., exactly
+```
+
+That last line **refines** the finding above rather than contradicting it. The current head is on no
+upstream branch or tag, but upstream *does* publish it at `refs/pull/570/head`. So "resolves only
+from the fork" is too strong for the head, and the PR ref is the sounder pin target of the two,
+because a fork branch can be rewritten by its owner — which is exactly what this section documents
+happening — and a PR ref cannot.
+
+**The `b1513f62` reference is now orphaned, and the claim it supported still stands.** That SHA is
+today an ancestor of neither the corpus pin `0dbe10bc` nor the head `25ac8581`: the branch was
+rewritten again, most recently on 2026-09-04. The claim itself was re-verified by text rather than
+by ancestry, which is the durable way to state it — the refusal-set rule and its short-circuiting
+clause (*a verifier MUST NOT name a conjunct it did not reach*) appear exactly once in the head and
+not at all in the corpus pin, 4393 bytes and 69 changed lines apart.
+
+One caveat on how that was checked, because the obvious probe lies. The clause is line-wrapped in
+the source, so `grep` for the sentence returns **zero in both files** and reads as absent from the
+head as well. Whitespace has to be normalised before matching, or the answer is a false negative on
+the one question this paragraph exists to settle.
+
+The fresh pre-registration this section called for is `PIN-rev27-RUN.md`, written on those terms;
+one phrase there does not survive contact, since it asked for a run "before any v0.7 code exists"
+and v0.7 code has existed since revision 22. What was preserved instead is the substance: a run
+begins from terms fixed in advance, naming the revision it ran against.
