@@ -1,7 +1,7 @@
 name: conformance
 
 # The parity number in the README is only worth what a third party can re-run.
-# This pins the suite commit and the spec digest, demands the full 248/248, and
+# This pins the suite commit and the spec digest, demands the full 272/272, and
 # compares a fresh run against the checked-in evidence, so the repository cannot
 # drift away from its own claim.
 on:
@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 env:
-  SUITE_COMMIT: 5019931751041c815463faa569fbb159e01612a0
+  SUITE_COMMIT: 94c163c8e4d9b52a7056c63bc489932329d42a42
   SPEC_DIGEST: 759d2383e5da36fa509dc335e6159a20b87641b25ebbadcf1676c55d75ffd8b0
 
 jobs:
@@ -74,4 +74,4 @@ jobs:
           grep -q 'parity: accepts 55/55, rejects 193/193, indeterminate 2/2' run.txt
 
       - name: Fresh run must match the checked-in evidence
-        run: python3 scripts/compare-report.py fresh.json reports/v0.7-rev26-directed-run.json
+        run: python3 scripts/compare-report.py fresh.json reports/v0.7-rev27-directed-run.json

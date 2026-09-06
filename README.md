@@ -20,6 +20,8 @@ directed 232/232 followed a spec diff already read and an adversarial review of 
 and is not evidence about the text. Reason parity is reported separately and is not verdict parity.
 Full record in [`reports/v0.7-RUN.md`](reports/v0.7-RUN.md).
 
+**suiteRevision 27: 272/272** (61/61 accepts, 209/209 rejects, 2/2 indeterminate) with the checker **unchanged** — byte-identical `checkerSourceDigest` to revision 26. The corpus advanced 282 commits and 250 -> 272 vectors and the frozen build agreed on every one, so no vector-driven fix is possible in either direction. That is the whole claim: *this build, frozen before the corpus moved, still agrees with it after*. Not a statement about the specification's determinacy from a cold start — the figure that bears on that is still the blind 179/232. Pre-registered in [`PIN-rev27-RUN.md`](PIN-rev27-RUN.md), which was committed before the record and discloses that an unregistered exploratory pass preceded it. **Scope, because the number invites a wider reading than it earns:** the corpus is pinned to spec `0dbe10bc` while the pull request head is `25ac8581`, 4393 bytes apart, and the head's new refusal-set rule — *a verifier MUST NOT name a conjunct it did not reach* — is exercised by **no vector in this corpus**. This run is not evidence of compliance with it, and that question is open.
+
 [PARITY-REPORT.md](PARITY-REPORT.md) carries the scores, the interpretation decisions the spec text forced, the four formerly-open corners and how each was closed, and the from-spec discipline attestation listing exactly what was and was not read for each revision. [NOTES.md](NOTES.md) compares the vendored spec against the branch-head spec.
 
 No dependency on the reference implementation: this crate carries its own strict I-JSON parser, RFC 8785 canonicalization with ECMAScript number formatting, RFC 6962 domain-separated Merkle root over DSSE PAE bytes, run-binding derivation, and Ed25519 tier verification against the suite's seed-derived test key.
@@ -28,14 +30,19 @@ No dependency on the reference implementation: this crate carries its own strict
 
 ```
 git clone https://github.com/astrogilda/aee-conformance
-git -C aee-conformance checkout 8959bd3293600c10516894e731ed1ef280a21b5c
+git -C aee-conformance checkout 94c163c8e4d9b52a7056c63bc489932329d42a42
 cargo run --locked --release -- aee-conformance/vectors --json fresh.json
-python3 scripts/compare-report.py fresh.json reports/v0.7-directed-run.json
+python3 scripts/compare-report.py fresh.json reports/v0.7-rev27-directed-run.json
 ```
 
 The checkout is pinned deliberately. `main` moves, and a later revision would run
-a different corpus against the 232/232 claim on this page, which is the one thing
-a reproduction recipe must not do quietly. Earlier revisions are reproducible the
+a different corpus against the claim on this page, which is the one thing a
+reproduction recipe must not do quietly. **This recipe was itself stale until
+2026-09-06**, pinning `8959bd32` — the revision-6 corpus, which is v0.6 — against
+a v0.7 report, so it could not reproduce anything: the v0.7 build refuses every
+v0.6 statement at the type check. A recipe that does not run is a worse failure
+than a recipe that runs the wrong corpus, and it survived because nothing
+executed it. CI now pins the same commit this recipe names. Earlier revisions are reproducible the
 same way by taking their suite pin and checker commit from
 [`reports/INDEX.json`](reports/INDEX.json).
 
