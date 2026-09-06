@@ -166,9 +166,14 @@ git fetch origin refs/pull/570/head                  # = 25ac8581..., exactly
 
 That last line **refines** the finding above rather than contradicting it. The current head is on no
 upstream branch or tag, but upstream *does* publish it at `refs/pull/570/head`. So "resolves only
-from the fork" is too strong for the head, and the PR ref is the sounder pin target of the two,
-because a fork branch can be rewritten by its owner — which is exactly what this section documents
-happening — and a PR ref cannot.
+from the fork" is too strong for the head.
+
+Be precise about what that ref buys, because the first draft of this paragraph overstated it. It is
+a **discovery path**: it reaches the commit from upstream even when the fork branch has been deleted
+or rewritten, which is exactly what this section documents happening. It is **not** an immutable
+pin. GitHub defines `refs/pull/<n>/head` as the latest commit on the pull-request head branch, so it
+moves on every force-push. The pin stays the full commit SHA; the ref is how a third party fetches
+it, and a reproduction should require the fetched ref to resolve to that SHA rather than assume it.
 
 **The `b1513f62` reference is now orphaned, and the claim it supported still stands.** That SHA is
 today an ancestor of neither the corpus pin `0dbe10bc` nor the head `25ac8581`: the branch was
