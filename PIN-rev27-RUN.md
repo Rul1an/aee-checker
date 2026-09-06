@@ -60,7 +60,7 @@ negative is not a probe.
 
 What settles it is a plain clone plus a reachability test, with lazy fetch disabled:
 
-```
+```bash
 git clone https://github.com/in-toto/attestation.git
 GIT_NO_LAZY_FETCH=1 git cat-file -e <sha>^{commit}     # ABSENT for both shas
 git for-each-ref  # 11 refs; neither sha is an ancestor of any
@@ -69,9 +69,15 @@ git fetch origin refs/pull/570/head                    # = 25ac8581..., exactly
 
 Result, and it **refines** the 2026-09-01 record rather than confirming it: `25ac8581` is on no
 upstream branch or tag, but upstream *does* publish it at `refs/pull/570/head`. "Resolves only from
-the fork" is too strong for this head. The PR ref is also the better pin target of the two, because
-a fork branch can be deleted or rewritten by its owner — which is what happened to `23bee586` — and
-the PR ref cannot.
+the fork" is too strong for this head.
+
+**What that ref is good for, and what it is not.** It is a discovery path: it lets a third party
+reach the commit from upstream without trusting the fork, which a fork branch deletion would
+otherwise take away. It is **not** an immutable pin. GitHub defines `refs/pull/<n>/head` as the
+latest commit on the pull-request head branch, so it moves whenever the author force-pushes, which
+this author has now done twice. The pin is therefore the **full commit SHA**, and the ref is the way
+to fetch it; a reproduction should require the fetched ref to resolve to that SHA and treat a
+mismatch as the branch having moved, not as a failed fetch.
 
 ## What this build has read, and what it has not
 
@@ -101,7 +107,8 @@ One counting note, recorded because the exploratory pass got it wrong first. Bet
 and 27 the suite renamed every vector from descriptive names (`ok-001-caught-intercepted-fail`) to
 content-addressed ids (`vcf20eae7df4f1f1b`). A set difference between the two record files therefore
 reports 272 new and 250 removed, which is an artifact of the rename and not a corpus delta. The
-honest statement of the change is the net count: 250 to 272, accepts 55 to 61, rejects 195 to 211.
+honest statement of the change is the net count: 250 to 272, accepts 55 to 61, rejects 193 to 209,
+indeterminate 2 to 2.
 
 ## What this run cannot establish
 

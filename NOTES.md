@@ -92,9 +92,11 @@ probe, and this one had already been trusted once.
 A plain clone with `GIT_NO_LAZY_FETCH=1` plus a ref-reachability test settles it:
 `25ac8581` is absent from a plain clone and is an ancestor of none of upstream's
 11 branches and tags, but upstream **does** publish it at `refs/pull/570/head`.
-So "resolves only from the fork" is too strong for this head. The PR ref is also
-the sounder pin target, because a fork branch can be rewritten by its owner —
-which is exactly what happened to `23bee586` — and a merged-or-not PR ref cannot.
+So "resolves only from the fork" is too strong for this head. That ref is a
+discovery path rather than a pin: it reaches the commit from upstream even if the
+fork branch is deleted, but GitHub defines `refs/pull/<n>/head` as the latest
+commit on the pull-request head branch, so it moves on every force-push. Pin the
+full SHA and require the fetched ref to resolve to it.
 
 
 ## Corpus observations
