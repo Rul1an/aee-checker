@@ -54,25 +54,50 @@ the fixed build still reproduces the revision-5 record exactly.
 
 ## Vendored spec vs branch head
 
-The conformance suite vendors the predicate spec at
-`spec/predicates/adversarial-execution-evidence.md`. Compared (byte diff)
-against the authoritative branch head at
-`https://raw.githubusercontent.com/astrogilda/attestation/4a36b197/spec/predicates/adversarial-execution-evidence.md`:
+**Re-measured 2026-09-06, and it no longer says what it said.** This section
+previously recorded the vendored spec as byte-identical to the branch head, for
+v0.6, against `astrogilda/attestation@4a36b197`. All three of those have moved,
+and a reader who trusted the old text would conclude there is no version skew
+when there is 4393 bytes of it.
 
-**Byte-identical.** There are no normative (or editorial) differences
-between the vendored spec and the branch-head spec, so no vector could be
-affected by a version skew. Both carry:
+Measured by clone rather than by API, at `spec/predicates/adversarial-execution-evidence.md`:
 
-- Type URI `https://in-toto.io/attestation/adversarial-execution-evidence/v0.6`,
-  version 0.6.0;
-- the BMP-only string profile on signed canonical surfaces;
-- the optional `aeeRunSeq` / `aeePrevRunBinding` / `aeeChainScope`
-  arming-payload run-chaining members;
-- the numbered four-step byte-pure validity stage and the trust-relative
-  tier stage.
+| | commit | bytes | sha256 |
+|---|---|---|---|
+| Corpus `VENDOR-PIN` | `0dbe10bc` | 147709 | `759d2383…` |
+| Pull-request head | `25ac8581` | 152102 | `2b7f3bc0…` |
+| The 2026-08-03 pin | `23bee586` | 135178 | `94de8da5…` |
 
-The local working copy at `/tmp/aee-spec.md` was also byte-identical to the
-branch head.
+The corpus pin hashes to its own declared `specDigest` byte for byte, so the
+suite is internally consistent; the skew is between the corpus and the head, not
+inside the corpus. The 69 changed lines add the refusal-set rule: the set a
+refusal names MUST be the set the implementation evaluated, the listed shapes are
+explicitly non-exhaustive, and where evaluation short-circuits at the first false
+conjunct a verifier MUST NOT name a conjunct it did not reach and SHOULD name the
+conjunct that decided the refusal.
+
+**No vector in revision 27 exercises that rule**, because the corpus predates it.
+Whether this checker complies is therefore open and answerable only from the
+text.
+
+### Where the head actually lives, and how that was settled
+
+Not by the GitHub API, and not by `git fetch --depth 1 origin <sha>` either.
+Both are served from the shared fork-network object store, so both answer for a
+commit only a fork holds; run as a negative control against `23bee586`, which the
+2026-09-01 record establishes as fork-only, the bare-sha fetch **succeeds** from
+`in-toto/attestation`. A probe that cannot fail on a known negative is not a
+probe, and this one had already been trusted once.
+
+A plain clone with `GIT_NO_LAZY_FETCH=1` plus a ref-reachability test settles it:
+`25ac8581` is absent from a plain clone and is an ancestor of none of upstream's
+11 branches and tags, but upstream **does** publish it at `refs/pull/570/head`.
+So "resolves only from the fork" is too strong for this head. That ref is a
+discovery path rather than a pin: it reaches the commit from upstream even if the
+fork branch is deleted, but GitHub defines `refs/pull/<n>/head` as the latest
+commit on the pull-request head branch, so it moves on every force-push. Pin the
+full SHA and require the fetched ref to resolve to it.
+
 
 ## Corpus observations
 
