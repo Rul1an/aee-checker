@@ -67,11 +67,11 @@ jobs:
         # something is already wrong, so it gets held shut here.
         run: python3 tests/test_compare_report.py
 
-      - name: Full corpus, 250/250 required
+      - name: Full corpus, 272/272 required
         run: |
           set -euo pipefail
           cargo run --locked --release -- aee-conformance/vectors --json fresh.json | tee run.txt
-          grep -q 'parity: accepts 55/55, rejects 193/193, indeterminate 2/2' run.txt
+          grep -q 'parity: accepts 61/61, rejects 209/209, indeterminate 2/2' run.txt
 
       - name: Fresh run must match the checked-in evidence
         run: python3 scripts/compare-report.py fresh.json reports/v0.7-rev27-directed-run.json
