@@ -1,6 +1,6 @@
 # aee-checker
 
-An independent validity-gate checker for the **Adversarial Execution Evidence (AEE)** in-toto predicate (v0.6, [in-toto/attestation#570](https://github.com/in-toto/attestation/pull/570)), implemented **from the specification text alone**: the four byte-pure stage-one validity steps (statement well-formedness, coverage validity, the result recompute, digest integrity) plus the trust-relative evidence tier, run against the [astrogilda/aee-conformance](https://github.com/astrogilda/aee-conformance) vector corpus.
+An independent validity-gate checker for the **Adversarial Execution Evidence (AEE)** in-toto predicate (v0.6, [in-toto/attestation#570](https://github.com/in-toto/attestation/pull/570)), implemented **from the specification text alone**: the four byte-pure stage-one validity steps (statement well-formedness, coverage validity, the result recompute, digest integrity) plus the trust-relative evidence tier, run against the [astrogilda/agent-evidence-vectors](https://github.com/astrogilda/agent-evidence-vectors) vector corpus.
 
 **suiteRevision 1: 125/125 parity** (34/34 accepts including result tokens, 91/91 rejects) on the first full corpus run, blind, with no vector-driven fixes.
 
@@ -29,9 +29,9 @@ No dependency on the reference implementation: this crate carries its own strict
 ## Running
 
 ```
-git clone https://github.com/astrogilda/aee-conformance
-git -C aee-conformance checkout 94c163c8e4d9b52a7056c63bc489932329d42a42
-cargo run --locked --release -- aee-conformance/vectors --json fresh.json
+git clone https://github.com/astrogilda/agent-evidence-vectors
+git -C agent-evidence-vectors checkout 94c163c8e4d9b52a7056c63bc489932329d42a42
+cargo run --locked --release -- agent-evidence-vectors/vectors --json fresh.json
 python3 scripts/compare-report.py fresh.json reports/v0.7-rev27-directed-run.json
 ```
 
