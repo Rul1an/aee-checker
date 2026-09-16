@@ -27,7 +27,12 @@ import sys
 # Defaults follow the README's reproduction flow: the suite cloned beside this
 # repository, the run record under reports/. Both are overridable so the script
 # runs from any layout rather than only the one it was written in.
-SUITE = os.environ.get("AEE_CONFORMANCE_DIR", "aee-conformance")
+# The suite was renamed; prefer the new directory name and fall back to the old
+# one for checkouts made before the rename.
+SUITE = os.environ.get("AEE_CONFORMANCE_DIR") or next(
+    (d for d in ("agent-evidence-vectors", "aee-conformance") if os.path.isdir(d)),
+    "agent-evidence-vectors",
+)
 RUN = os.environ.get("AEE_RUN_REPORT", "reports/v0.7-directed-run.json")
 manifest_path = os.path.join(SUITE, "vectors", "MANIFEST.json")
 for path in (manifest_path, RUN):

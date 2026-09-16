@@ -19,18 +19,45 @@ import sys
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-ACCEPT_VECTOR = "accept/ok-001-caught-intercepted-fail.json"
 
 
 def suite_dir():
+    """The checked-out suite, or None when none is present locally.
+
+    A directory named by AEE_CONFORMANCE_DIR must be usable: CI sets it, and a
+    suite that is checked out but unreadable has to fail the step rather than
+    skip it, or the test goes quiet exactly when the corpus layout moves.
+    """
+    named = os.environ.get("AEE_CONFORMANCE_DIR")
+    if named:
+        if not (pathlib.Path(named) / "vectors" / "MANIFEST.json").exists():
+            raise SystemExit(f"FAIL: AEE_CONFORMANCE_DIR={named} has no vectors/MANIFEST.json")
+        return pathlib.Path(named)
     for candidate in (
-        os.environ.get("AEE_CONFORMANCE_DIR"),
+        # The suite was renamed; the new name is what the README clones to.
+        # The old name stays as a fallback for checkouts made before the rename.
+        ROOT / "agent-evidence-vectors",
+        ROOT.parent / "agent-evidence-vectors",
         ROOT / "aee-conformance",
         ROOT.parent / "aee-conformance",
     ):
-        if candidate and (pathlib.Path(candidate) / "vectors" / ACCEPT_VECTOR).exists():
-            return pathlib.Path(candidate)
+        if (candidate / "vectors" / "MANIFEST.json").exists():
+            return candidate
     return None
+
+
+def accept_vector(suite: pathlib.Path):
+    """The first accepted statement whose result is fail, read from the manifest.
+
+    The manifest names each statement's file, so the test follows it instead of
+    assuming a directory layout. A fail result keeps the recompute from masking
+    the coverage fault: the mutation below leaves the result alone.
+    """
+    manifest = json.loads((suite / "vectors" / "MANIFEST.json").read_text())
+    for entry in manifest.get("vectors", []):
+        if entry.get("kind") == "accept" and entry.get("expected", {}).get("result") == "fail":
+            return entry["id"], entry["file"]
+    raise SystemExit("FAIL: the manifest lists no accepted statement with result fail")
 
 
 def run_with_unknown_key(suite: pathlib.Path, reason_map: str):
@@ -38,7 +65,8 @@ def run_with_unknown_key(suite: pathlib.Path, reason_map: str):
     vectors = tmp / "vectors"
     shutil.copytree(suite / "vectors", vectors)
 
-    target = vectors / ACCEPT_VECTOR
+    vector_id, vector_file = accept_vector(suite)
+    target = vectors / vector_file
     doc = json.loads(target.read_text())
     # `result` is deliberately left alone: changing it would make the result
     # recompute fire and mask the coverage fault behind an unrelated one.
@@ -52,7 +80,7 @@ def run_with_unknown_key(suite: pathlib.Path, reason_map: str):
         text=True,
     )
     shutil.rmtree(tmp, ignore_errors=True)
-    return r
+    return vector_id, r
 
 
 def main() -> int:
@@ -62,9 +90,9 @@ def main() -> int:
         return 0
 
     for reason_map in ("outOfScope", "routedElsewhere"):
-        r = run_with_unknown_key(suite, reason_map)
+        vector_id, r = run_with_unknown_key(suite, reason_map)
         out = r.stdout + r.stderr
-        assert "MISMATCH ok-001" in out, (
+        assert f"MISMATCH {vector_id}" in out, (
             f"an unknown {reason_map} class must be refused; the checker accepted it:\n{out[-800:]}"
         )
         assert f"{reason_map} class" in out, (
