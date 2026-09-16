@@ -26,6 +26,12 @@ Full record in [`reports/v0.7-RUN.md`](reports/v0.7-RUN.md).
 
 No dependency on the reference implementation: this crate carries its own strict I-JSON parser, RFC 8785 canonicalization with ECMAScript number formatting, RFC 6962 domain-separated Merkle root over DSSE PAE bytes, run-binding derivation, and Ed25519 tier verification against the suite's seed-derived test key.
 
+## How this checker was written
+
+This checker was written with AI coding agents, mainly Claude Code from Anthropic, directed and reviewed by the maintainer. Most commits on `main` carry a `Co-Authored-By: Claude` trailer, but the trailer is not a complete record: merge commits, several squash-merged changes and a few direct commits do not carry it. Earlier versions of this README and of the parity report did not say any of this, and they should have.
+
+That bears on what the scores above can show. The from-spec discipline in [PARITY-REPORT.md](PARITY-REPORT.md) records what was read during each run; it cannot record what the model had seen before, and it does not make this checker independent of other agent-written implementations. Implementations of one specification written by coding agents fail together more often than independence predicts, and many of the shared failures trace to parts of the specification that are hard or ambiguous ([Ron, Baudry and Monperrus, arXiv 2606.20158](https://arxiv.org/abs/2606.20158)). Agreement between this checker and another agent-written one is therefore weaker evidence that the text determines a reading than it would be if the two failed independently.
+
 ## Running
 
 ```

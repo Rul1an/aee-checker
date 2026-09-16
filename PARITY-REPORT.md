@@ -307,6 +307,8 @@ let a defect and a design question sit in the same list.
 
 ## How this was built (from-spec discipline)
 
+**Tooling.** The checker was written with AI coding agents, mainly Claude Code, directed and reviewed by the maintainer; see [README.md](README.md#how-this-checker-was-written). The discipline below records what was read in each run. It does not cover what the models had seen before, and the chronology below is the maintainer's account: the first commit carries both the checker and its first corpus run, and it does not establish independence from other agent-written implementations.
+
 The from-spec claim covers stages one through four plus the tier; the
 implementation was written against the specification text and the public
 standards it pins, then run against the vector corpus. Files read, in full:
