@@ -31,15 +31,15 @@ jobs:
       - name: Check out the conformance suite at the pinned commit
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          repository: astrogilda/aee-conformance
+          repository: astrogilda/agent-evidence-vectors
           ref: ${{ env.SUITE_COMMIT }}
-          path: aee-conformance
+          path: agent-evidence-vectors
           persist-credentials: false
 
       - name: Verify the spec digest the parity claim was made against
         run: |
           set -euo pipefail
-          actual="$(sha256sum aee-conformance/spec/predicates/adversarial-execution-evidence.md | cut -d' ' -f1)"
+          actual="$(sha256sum agent-evidence-vectors/spec/predicates/adversarial-execution-evidence.md | cut -d' ' -f1)"
           echo "expected ${SPEC_DIGEST}"
           echo "actual   ${actual}"
           test "${actual}" = "${SPEC_DIGEST}"
@@ -54,7 +54,7 @@ jobs:
       - name: Coverage-partition test
         # Uses the checked-out suite; skips silently without it.
         env:
-          AEE_CONFORMANCE_DIR: aee-conformance
+          AEE_CONFORMANCE_DIR: agent-evidence-vectors
         run: python3 tests/test_coverage_partition.py
 
       - name: Index-validator tests
@@ -70,7 +70,7 @@ jobs:
       - name: Full corpus, 272/272 required
         run: |
           set -euo pipefail
-          cargo run --locked --release -- aee-conformance/vectors --json fresh.json | tee run.txt
+          cargo run --locked --release -- agent-evidence-vectors/vectors --json fresh.json | tee run.txt
           grep -q 'parity: accepts 61/61, rejects 209/209, indeterminate 2/2' run.txt
 
       - name: Fresh run must match the checked-in evidence
