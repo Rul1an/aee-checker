@@ -28,7 +28,7 @@ held all along; the provenance half is what was missing, and it is what is now s
 |---|---|
 | Predicate text | `in-toto/attestation` @ `23bee586d651c79ba6a1dd55d4b29b7c2ef2cff2`, `spec/predicates/adversarial-execution-evidence.md` |
 | Predicate spec digest | `sha256:94de8da54af6a2fe4c897f606ca22bfd054f4238b3c85db031ddc703516331b5` |
-| Conformance suite | `astrogilda/aee-conformance` @ `84ba227155f55b653deed5051027f9aecdd2159f` (2026-08-03T02:34:15Z) |
+| Conformance suite | `astrogilda/aee-conformance` @ `84ba227155f55b653deed5051027f9aecdd2159f` (2026-08-03T02:34:15Z); `4cd65a16cbb9bac84966613af8995cb2a9a54bb0` since the suite's 2026-09-18 history rewrite, same vectors |
 | Checker source digest at declaration | `sha256:1c3e2e7843fc021e20c33d3bdc726fbb704ad0438654a0444fa7a06d6613aaba` |
 | Checker commit at declaration | `524cc7d9f6a2fdbc8cf741b69f7d0a98ab74ee16` |
 
@@ -121,7 +121,7 @@ that commit's diff adds the line `"commitRepo": "astrogilda/attestation"`. The n
 | Commit | `23bee586d651c79ba6a1dd55d4b29b7c2ef2cff2` | `0dbe10bcc959b63dc42370a5db09812c9476f59a` |
 | Spec size | 2140 lines | 2322 lines, 147709 bytes |
 | Spec digest | `sha256:94de8da5...` | `sha256:759d2383e5da36fa509dc335e6159a20b87641b25ebbadcf1676c55d75ffd8b0` |
-| Suite | `84ba2271` (2026-08-03) | `0c4e27ec4f28b03d9688885bb5a00c6e96334d1e` (2026-08-31) |
+| Suite | `84ba2271` (2026-08-03), now `4cd65a16` | `0c4e27ec4f28b03d9688885bb5a00c6e96334d1e` (2026-08-31), now `d25f00d3f7344fed80f65f2a74a4f69a68c0ffed` |
 
 Verified today by clone, not by API: the commit resolves in `astrogilda/attestation`, sits on
 `origin/predicate/adversarial-execution-evidence`, and its

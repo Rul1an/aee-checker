@@ -35,7 +35,7 @@ determinacy is still the 179/232 in `reports/v0.7-blind-run.json` and this run d
 | Predicate spec digest at that head | `sha256:2b7f3bc08123cbe1981d287cf20193858ae5ea6d55ca067e06363a1e71a573d7` (152102 bytes) |
 | Predicate text the corpus was authored against | `astrogilda/attestation` @ `0dbe10bcc959b63dc42370a5db09812c9476f59a` |
 | Spec digest the corpus names | `sha256:759d2383e5da36fa509dc335e6159a20b87641b25ebbadcf1676c55d75ffd8b0` (147709 bytes) |
-| Conformance suite | `astrogilda/aee-conformance` @ `94c163c` (2026-09-04T10:05:01-04:00), 272 vectors |
+| Conformance suite | `astrogilda/aee-conformance` @ `94c163c` (2026-09-04T10:05:01-04:00), 272 vectors; `e98de66` since the suite's 2026-09-18 history rewrite, same vectors |
 | Checker source digest at declaration | `sha256:5fbe879e9d6a7355d5af8c4ea6f7c055f9289753c69b9336b5ce0a213371b596` |
 | Checker commit at declaration | `61b5e28b84ede1dec26ae8d1e33f9e65f84cb013` |
 | Revision number | 27, assigned by **this** repository's sequence, not the suite's. The suite carries no `suiteRevision`; its authoritative identifier is the commit, and `git describe` calls this head `v0.9.0-21-g94c163c`. |

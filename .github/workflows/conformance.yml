@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 env:
-  SUITE_COMMIT: 94c163c8e4d9b52a7056c63bc489932329d42a42
+  SUITE_COMMIT: e98de66d7296c4eb01abc38b6aee0b51b0c87a8e
   SPEC_DIGEST: 759d2383e5da36fa509dc335e6159a20b87641b25ebbadcf1676c55d75ffd8b0
 
 jobs:
@@ -31,7 +31,7 @@ jobs:
       - name: Check out the conformance suite at the pinned commit
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          repository: astrogilda/agent-evidence-vectors
+          repository: probityai/agent-evidence-vectors
           ref: ${{ env.SUITE_COMMIT }}
           path: agent-evidence-vectors
           persist-credentials: false
