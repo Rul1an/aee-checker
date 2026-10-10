@@ -131,8 +131,9 @@ def main() -> int:
         if not isinstance(rec.get("checkerRun"), int):
             continue
         # A run label names one corpus commit and spec. The corpus's own number
-        # does not: suiteRevision 25 spans two commits across a spec pin refresh
-        # that kept the number, so this check holds only for checkerRun.
+        # does not: suiteRevision 25 spans two commits, because the corpus added two
+        # vectors under that number and a spec pin refresh then kept it, so this
+        # check holds only for checkerRun.
         prior = by_revision.setdefault(
             rec["checkerRun"], (rec["file"], rec.get("suiteCommit"), rec.get("specDigest"))
         )

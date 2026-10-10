@@ -98,6 +98,41 @@ def test_two_records_of_one_revision_must_agree_on_the_suite():
     expect_fail(in_copy(m), "disagrees with")
 
 
+def test_the_single_suite_revision_field_is_refused():
+    # It held this repository's run label under the corpus's name; runs 26 and 27
+    # are where the two numbers part.
+    def m(w):
+        i = load(w)
+        for rec in i["records"]:
+            if rec["file"] == "v0.7-rev27-directed-run.json":
+                rec["suiteRevision"] = 27
+        save(w, i)
+    expect_fail(in_copy(m), "carries suiteRevision")
+
+
+def test_both_revision_numbers_are_required():
+    for key in ("checkerRun", "corpusSuiteRevision"):
+        def m(w, key=key):
+            i = load(w)
+            for rec in i["records"]:
+                if rec["file"] == "v0.7-rev27-directed-run.json":
+                    del rec[key]
+            save(w, i)
+        expect_fail(in_copy(m), f"{key} is not a positive integer")
+
+
+def test_relabelling_run_26_with_its_corpus_number_is_refused():
+    # Corpus suiteRevision 25 spans run 25's commit and run 26's, so it cannot
+    # serve as a run label: the one-commit-per-label check must catch it.
+    def m(w):
+        i = load(w)
+        for rec in i["records"]:
+            if rec["file"] == "v0.7-rev26-directed-run.json":
+                rec["checkerRun"] = 25
+        save(w, i)
+    expect_fail(in_copy(m), "checkerRun 25 disagrees with")
+
+
 def test_a_forged_historical_checker_commit_is_refused():
     """checkerCommit was the one provenance field nothing looked at, so it could
     name anything. This is the exact mutation that once passed."""
