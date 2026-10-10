@@ -125,3 +125,13 @@ open, it is answerable only from the text, and it is not answered here. Recordin
 point: a run that quietly let a full parity number stand in for compliance with a clause the corpus
 cannot reach would be claiming coverage it does not have — which is the failure this repository
 exists to argue about.
+
+## Correction, 2026-10-10
+
+Two labels above are wrong, and this pre-registration is left as it was committed so the record of what was declared before the run stays intact.
+
+The revision row says the suite carries no `suiteRevision`. It does: `vectors/CHANGES.md` numbers the corpus's own revisions, and at `94c163c` (`e98de66` after the rewrite) its latest entry is suiteRevision 28. So this run, 27 in this repository's sequence, ran against corpus suiteRevision 28. The corpus is still named by its commit, as the table does.
+
+Under "The two numbers this run publishes", suite `50199317` is called revision 26. At that commit (`97ba4ff` after the rewrite) the corpus's latest entry is suiteRevision 25, followed by a spec pin refresh that kept the number; the corpus's own suiteRevision 26 came later. 26 is this repository's label for that run.
+
+`reports/INDEX.json` now carries both numbers per record, `checkerRun` and `corpusSuiteRevision`, and `scripts/validate-index.py` refuses the single `suiteRevision` field that held the first under the second's name. No result changes: the records, their digests and the checker are untouched.

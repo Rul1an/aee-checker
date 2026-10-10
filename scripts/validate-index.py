@@ -115,12 +115,30 @@ def main() -> int:
                 continue
             if not DIGEST.match(rec[key]):
                 problems.append(f"{rec['file']}: {key} is not a sha256:<64 hex> digest")
+        # Two numbers, kept apart: checkerRun is this repository's run label and
+        # corpusSuiteRevision is the corpus's own. A single suiteRevision field
+        # held the first under the second's name until runs 26 and 27, where they
+        # diverge, so the old key is refused rather than read.
+        if "suiteRevision" in rec:
+            problems.append(
+                f"{rec['file']}: carries suiteRevision; use checkerRun for this repository's "
+                f"run label and corpusSuiteRevision for the corpus's own number"
+            )
+        for key in ("checkerRun", "corpusSuiteRevision"):
+            value = rec.get(key)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+                problems.append(f"{rec['file']}: {key} is not a positive integer")
+        if not isinstance(rec.get("checkerRun"), int):
+            continue
+        # A run label names one corpus commit and spec. The corpus's own number
+        # does not: suiteRevision 25 spans two commits across a spec pin refresh
+        # that kept the number, so this check holds only for checkerRun.
         prior = by_revision.setdefault(
-            rec["suiteRevision"], (rec["file"], rec.get("suiteCommit"), rec.get("specDigest"))
+            rec["checkerRun"], (rec["file"], rec.get("suiteCommit"), rec.get("specDigest"))
         )
         if (rec.get("suiteCommit"), rec.get("specDigest")) != prior[1:]:
             problems.append(
-                f"{rec['file']}: suiteRevision {rec['suiteRevision']} disagrees with {prior[0]} "
+                f"{rec['file']}: checkerRun {rec['checkerRun']} disagrees with {prior[0]} "
                 f"on suiteCommit or specDigest"
             )
 
