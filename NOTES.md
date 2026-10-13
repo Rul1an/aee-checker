@@ -76,7 +76,7 @@ explicitly non-exhaustive, and where evaluation short-circuits at the first fals
 conjunct a verifier MUST NOT name a conjunct it did not reach and SHOULD name the
 conjunct that decided the refusal.
 
-**No vector in revision 27 exercises that rule**, because the corpus predates it.
+**No vector in the corpus behind run 27 (suiteRevision 28 at `94c163c`) exercises that rule**, because the corpus predates it.
 Whether this checker complies is therefore open and answerable only from the
 text.
 
